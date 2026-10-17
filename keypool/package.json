@@ -1,0 +1,25 @@
+{
+  "description": "Estate keypool daemon (Bun/TS port of herd-keypool.py)",
+  "main": "src/index.ts",
+  "name": "@estate/keypool",
+  "private": true,
+  "scripts": {
+    "build": "bun build src/index.ts --compile --outfile dist/keypool",
+    "dev": "bun --watch src/index.ts",
+    "lint": "tsc --noEmit -p tsconfig.json",
+    "start": "bun src/index.ts",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "estate": {
+    "daemon": "keypool",
+    "description": "Key pool router with health probing, failover, and racing (Tier 0).",
+    "port": 25109,
+    "portEnv": "KEYPOOL_PORT"
+  },
+  "type": "module",
+  "version": "0.1.0",
+  "dependencies": {
+    "@google/genai": "2.22.0"
+  }
+}
