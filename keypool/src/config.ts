@@ -154,6 +154,29 @@ export function parseSimpleYaml(text: string): Record<string, unknown> {
   return root;
 }
 
+/** Parse one `KEY=VALUE` line (optionally `export KEY='VALUE'`). Strips ONE
+ * matching pair of surrounding quotes from the value — secretsmith env emits
+ * shell-quoted exports, and storing the literal quotes corrupts every Bearer
+ * header downstream (the 2026-10-26 mass-down: valid keys 401'd as
+ * "Missing Authentication header" because the stored value was `sk-...'`). */
+export function parseEnvLine(line: string): [string, string] | undefined {
+  let t = line.trim();
+  if (!t || t.startsWith("#")) return undefined;
+  if (t.startsWith("export ")) t = t.slice(7).trim();
+  const eq = t.indexOf("=");
+  if (eq <= 0) return undefined;
+  const k = t.slice(0, eq).trim();
+  let v = t.slice(eq + 1).trim();
+  if (
+    v.length >= 2 &&
+    ((v.startsWith("'") && v.endsWith("'")) ||
+      (v.startsWith('"') && v.endsWith('"')))
+  ) {
+    v = v.slice(1, -1);
+  }
+  return [k, v];
+}
+
 /** Load secrets from KEY=VALUE file, merged with the process environment. */
 export function loadSecrets(path: string): Map<string, string> {
   const out = new Map<string, string>();
@@ -166,12 +189,8 @@ export function loadSecrets(path: string): Map<string, string> {
     );
   } else {
     for (const line of readFileSync(path, "utf8").split("\n")) {
-      let t = line.trim();
-      if (!t || t.startsWith("#")) continue;
-      if (t.startsWith("export ")) t = t.slice(7).trim();
-      const eq = t.indexOf("=");
-      if (eq < 0) continue;
-      out.set(t.slice(0, eq).trim(), t.slice(eq + 1).trim());
+      const parsed = parseEnvLine(line);
+      if (parsed) out.set(parsed[0], parsed[1]);
     }
   }
   // Env wins: the keyring SSOT overrides/reconciles the fallback file.
@@ -191,12 +210,9 @@ export function loadSecrets(path: string): Map<string, string> {
     if (proc.exitCode === 0) {
       const text = new TextDecoder().decode(proc.stdout);
       for (const line of text.split("\n")) {
-        const t = line.trim();
-        if (!t || t.startsWith("#")) continue;
-        const eq = t.indexOf("=");
-        if (eq <= 0) continue;
-        const k = t.slice(0, eq).trim();
-        const v = t.slice(eq + 1).trim();
+        const parsed = parseEnvLine(line);
+        if (!parsed) continue;
+        const [k, v] = parsed;
         if (k.startsWith("GEMINI_EAP_") || /_API_KEY(_[A-Z0-9]+)?$/.test(k)) {
           if (!out.has(k)) out.set(k, v);
         }
