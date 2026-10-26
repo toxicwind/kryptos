@@ -27,7 +27,7 @@ wrong.
 - 📇 **Schema registry** (`schemas.json`): `--schema chromium` instead of memorizing `xdg:schema` URIs; unknown schemas warn, not fail
 - 🧪 **JSON mode for everything** (`--json`) — fully scriptable
 - 🔒 **Never leaks**: secrets print only under `--show`; `set` reads from stdin/`--secret-file`, never argv (no `ps` snooping)
-- 🛡️ **Chromium os_crypt key is never printed on any path** — not with `--show`, not as JSON; `get`/`search --show` on key items is refused *before* the secret is fetched
+- 🛡️ **Chromium os_crypt key is never printed on any path** — not with `--show`, not as JSON; `get`/`search --show` on key items is refused _before_ the secret is fetched
 - 🍪 **Chromium pipeline**: decrypt `Login Data` / cookies in place, key consumed internally, never emitted
 - 📦 Single-file CLI (`secretsmith.py`), stdlib + `dbus-python` (+ `cryptography` for Chromium)
 
@@ -46,10 +46,28 @@ flowchart LR
 ## Quick Start
 
 ```bash
-ln -sf /home/toxic/estate/ranch/mesh/secretsmith/bin/secretsmith ~/.local/bin/secretsmith
+ln -sf /home/toxic/pens/olympus/products/kryptos/secretsmith.py ~/.local/bin/secretsmith
 secretsmith check
-secretsmith search --schema chromium
 ```
+
+## Secretsmith is the fleet SSOT (kryptos owns keyring + keypool)
+
+`secretsmith` is the estate's single source of truth for secrets (AGENTS rule 3).
+It feeds every layer:
+
+- **Shells** — `.bashrc.env` runs `secretsmith env` (under `set -a` so the bare
+  `VAR=` exports actually propagate to children) and the `secret()` wrapper is
+  the on-demand fallback. Provider-keyed tools (tau, kappa, curl) read
+  `Bun.env.OPENROUTER_API_KEY`, `GEMINI_EAP_KEY_N`, `NVIDIA_API_KEY`, … from it.
+- **keypool** (`keypool/`) — the `:25109` OpenAI/Interactions key router.
+  `keypool/src/config.ts:loadSecrets` resolves the file, then the process env,
+  then shells out to `secretsmith env` directly so the pitchfork-managed daemon
+  is **self-sufficient** (its `[env]` block carries no keyring values). This
+  replaced the old hard crash on the deleted `~/.secrets` fallback file.
+- **fortune**: `secretsmith env` to dump / `secret KEY` for one.
+
+Rules: never commit a raw secret; never hardcode keys in `pitchfork.toml`; let
+the keyring own the value and consumers read the env name.
 
 ## Usage
 
@@ -100,7 +118,7 @@ Secrets are **never printed without `--show`**. Listings show
 
 The Chromium os_crypt key (`secret_is_key` schemas in `schemas.json`) is
 **never printed on any path** — not with `--show`, not as JSON. `get` /
-`search --show` on such an item is refused with an error *before* the secret
+`search --show` on such an item is refused with an error _before_ the secret
 is even fetched. Decrypt operations (`chromium-logins`, `chromium-cookies`)
 consume the key internally and never emit it.
 
@@ -108,15 +126,15 @@ consume the key internally and never emit it.
 
 `schemas.json` maps friendly names to `xdg:schema` values. `chrome` is an
 alias of `chromium` (`chrome_libsecret_os_crypt_password_v2`); `generic` is
-`org.freedesktop.Secret.Generic` — explicitly documented as *not* what
+`org.freedesktop.Secret.Generic` — explicitly documented as _not_ what
 Chromium uses. Unregistered raw schema strings still work but warn.
 
 ## Config
 
-| Env / file | What |
-|---|---|
+| Env / file                 | What                                                                                 |
+| -------------------------- | ------------------------------------------------------------------------------------ |
 | `DBUS_SESSION_BUS_ADDRESS` | session bus; `bin/secretsmith` defaults it to the architect's session bus when unset |
-| `schemas.json` | friendly-name → `xdg:schema` registry, extended in place |
+| `schemas.json`             | friendly-name → `xdg:schema` registry, extended in place                             |
 
 Deps: `python3`, `dbus-python`, `cryptography` (Chromium pipeline only).
 

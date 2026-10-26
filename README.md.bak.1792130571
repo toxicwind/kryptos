@@ -1,6 +1,6 @@
 # secretsmith 🔐
 
-![sovereign](https://img.shields.io/badge/sovereign--projects-blue?style=for-the-badge)
+![estate](https://img.shields.io/badge/estate--projects-blue?style=for-the-badge)
 ![python](https://img.shields.io/badge/python-3776AB?style=for-the-badge&logo=python&logoColor=white)
 ![secret-service](https://img.shields.io/badge/freedesktop--Secret--Service-181717?style=for-the-badge)
 
@@ -46,7 +46,7 @@ flowchart LR
 ## Quick Start
 
 ```bash
-ln -sf /home/toxic/sovereign/projects/mesh/secretsmith/bin/secretsmith ~/.local/bin/secretsmith
+ln -sf /home/toxic/estate/projects/mesh/secretsmith/bin/secretsmith ~/.local/bin/secretsmith
 secretsmith check
 secretsmith search --schema chromium
 ```

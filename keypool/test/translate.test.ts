@@ -10,6 +10,30 @@ import {
   resolveGeminiModel,
 } from "../src/translate.js";
 
+/**
+ * Loose OpenAI/Gemini-wire shapes for the translate tests. The translators
+ * return plain object literals; this types ONLY the fields the behavior
+ * contract asserts so strict mode stays sound without leaking `any`.
+ */
+interface LooseOut {
+  model?: string;
+  input?: Array<{ result?: unknown }>;
+  tools?: unknown[];
+  result?: unknown;
+  stream?: boolean;
+  previous_interaction_id?: string;
+  choices?: Array<{
+    finish_reason?: string;
+    message?: LooseMsg;
+  }>;
+}
+
+/** The `choices[].message` wire object asserted by the translate tests. */
+interface LooseMsg {
+  content?: string;
+  tool_calls?: unknown[];
+}
+
 describe("resolveGeminiModel", () => {
   test("maps roost aliases to interactions model ids", () => {
     expect(resolveGeminiModel("gemini-eap")).toBe(
@@ -54,7 +78,7 @@ describe("openaiToInteractions", () => {
         { role: "user", content: "hello" },
         { role: "assistant", content: "hi there" },
       ],
-    }) as Record<string, unknown>;
+    }) as unknown as LooseOut;
     expect(out["model"]).toBe("models/gemini-flash-tool-retrieval");
     expect(out["input"]).toBe("user: hello\nassistant: hi there");
     expect(out["tools"]).toBeUndefined();
@@ -87,7 +111,7 @@ describe("openaiToInteractions", () => {
     const out = openaiToInteractions({
       model: "gemini-eap",
       messages: [{ role: "user", content: "hi" }],
-    }) as Record<string, unknown>;
+    }) as unknown as LooseOut;
     expect(out["tools"]).toBeUndefined();
   });
 
@@ -115,8 +139,8 @@ describe("openaiToInteractions", () => {
     const out = openaiToInteractions({
       model: "gemini-eap",
       messages: [{ role: "tool", content: "plain text", name: "g" }],
-    }) as { input?: unknown[] };
-    expect((out["input"]?.[0] as Record<string, unknown>)["result"]).toEqual({
+    }) as LooseOut;
+    expect(out["input"]?.[0]?.result).toEqual({
       content: "plain text",
     });
   });
@@ -125,8 +149,8 @@ describe("openaiToInteractions", () => {
     const out = openaiToInteractions({
       model: "gemini-eap",
       messages: [{ role: "tool", content: { k: 1 }, name: "h", id: "cid" }],
-    }) as { input?: unknown[] };
-    expect((out["input"]?.[0] as Record<string, unknown>)["result"]).toEqual({
+    }) as LooseOut;
+    expect(out["input"]?.[0]?.result).toEqual({
       k: 1,
     });
   });
@@ -153,7 +177,7 @@ describe("openaiToInteractions", () => {
       messages: [{ role: "user", content: "hi" }],
       stream: true,
       previous_interaction_id: "abc",
-    }) as Record<string, unknown>;
+    }) as unknown as LooseOut;
     expect(out["stream"]).toBe(true);
     expect(out["previous_interaction_id"]).toBe("abc");
   });
@@ -164,7 +188,7 @@ describe("interactionsToOpenai", () => {
     const out = interactionsToOpenai(
       { id: "i", steps: [] },
       "gemini-eap",
-    ) as Record<string, unknown>;
+    ) as unknown as LooseOut;
     expect(out["choices"]?.[0]?.["finish_reason"]).toBe("stop");
     expect(out["choices"]?.[0]?.["message"]?.["content"]).toBe("");
   });
@@ -183,8 +207,8 @@ describe("interactionsToOpenai", () => {
         ],
       },
       "gemini-eap",
-    ) as Record<string, unknown>;
-    const msg = out["choices"]?.[0]?.["message"] as Record<string, unknown>;
+    ) as unknown as LooseOut;
+    const msg = out["choices"]?.[0]?.["message"] as unknown as LooseOut;
     expect(out["choices"]?.[0]?.["finish_reason"]).toBe("tool_calls");
     expect((msg["tool_calls"] as unknown[])[0]).toEqual({
       id: "fc1",
@@ -208,8 +232,8 @@ describe("interactionsToOpenai", () => {
         ],
       },
       "gemini-eap",
-    ) as Record<string, unknown>;
-    const msg = out["choices"]?.[0]?.["message"] as Record<string, unknown>;
+    ) as unknown as LooseOut;
+    const msg = out["choices"]?.[0]?.["message"] as unknown as LooseOut;
     expect((msg["tool_calls"] as unknown[])[0]).toEqual({
       id: "mc1",
       type: "function",
@@ -227,8 +251,8 @@ describe("interactionsToOpenai", () => {
         ],
       },
       "gemini-eap",
-    ) as Record<string, unknown>;
-    const msg = out["choices"]?.[0]?.["message"] as Record<string, unknown>;
+    ) as unknown as LooseOut;
+    const msg = out["choices"]?.[0]?.["message"] as unknown as LooseOut;
     expect(out["choices"]?.[0]?.["finish_reason"]).toBe("stop");
     expect(msg["content"]).toBe("hello world");
   });
@@ -237,7 +261,7 @@ describe("interactionsToOpenai", () => {
     const out = interactionsToOpenai(
       { id: "i4", output: "direct output", steps: [] },
       "gemini-eap",
-    ) as Record<string, unknown>;
+    ) as unknown as LooseOut;
     expect(out["choices"]?.[0]?.["message"]?.["content"]).toBe("direct output");
   });
 });

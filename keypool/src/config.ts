@@ -28,7 +28,8 @@ function parseScalar(s: string): unknown {
     if (inner) {
       for (const part of splitTop(inner, ",")) {
         const ci = part.indexOf(":");
-        if (ci > 0) obj[part.slice(0, ci).trim()] = parseScalar(part.slice(ci + 1));
+        if (ci > 0)
+          obj[part.slice(0, ci).trim()] = parseScalar(part.slice(ci + 1));
       }
     }
     return obj;
@@ -76,7 +77,10 @@ export function parseSimpleYaml(text: string): Record<string, unknown> {
     const raw = lines[li];
     // strip comments (naive: # not inside quotes — good enough for our files)
     const hashIdx = raw.indexOf("#");
-    const line = (hashIdx >= 0 ? raw.slice(0, hashIdx) : raw).replace(/\s+$/, "");
+    const line = (hashIdx >= 0 ? raw.slice(0, hashIdx) : raw).replace(
+      /\s+$/,
+      "",
+    );
     if (!line.trim()) continue;
 
     const indent = line.length - line.trimStart().length;
@@ -102,7 +106,9 @@ export function parseSimpleYaml(text: string): Record<string, unknown> {
           frame.container = arr;
           container = arr;
         } else {
-          throw new Error(`YAML: list item under non-list at line ${li + 1}: ${raw}`);
+          throw new Error(
+            `YAML: list item under non-list at line ${li + 1}: ${raw}`,
+          );
         }
       }
       const valStr = content.startsWith("- ") ? content.slice(2).trim() : "";
@@ -148,19 +154,56 @@ export function parseSimpleYaml(text: string): Record<string, unknown> {
   return root;
 }
 
-/** Load secrets from KEY=VALUE file. */
+/** Load secrets from KEY=VALUE file, merged with the process environment. */
 export function loadSecrets(path: string): Map<string, string> {
   const out = new Map<string, string>();
   if (!existsSync(path)) {
-    throw new Error(`keypool: secrets file not found: ${path}`);
+    // ~/.secrets was the pre-keyring fallback record (AGENTS rule 3) and is
+    // gone after the keyring cutover; the secretsmith-injected process env is
+    // the SSOT now, so a missing file is a warn, not a fatal boot failure.
+    console.warn(
+      `[keypool] secrets file not found: ${path}; falling back to process env (keyring SSOT)`,
+    );
+  } else {
+    for (const line of readFileSync(path, "utf8").split("\n")) {
+      let t = line.trim();
+      if (!t || t.startsWith("#")) continue;
+      if (t.startsWith("export ")) t = t.slice(7).trim();
+      const eq = t.indexOf("=");
+      if (eq < 0) continue;
+      out.set(t.slice(0, eq).trim(), t.slice(eq + 1).trim());
+    }
   }
-  for (const line of readFileSync(path, "utf8").split("\n")) {
-    let t = line.trim();
-    if (!t || t.startsWith("#")) continue;
-    if (t.startsWith("export ")) t = t.slice(7).trim();
-    const eq = t.indexOf("=");
-    if (eq < 0) continue;
-    out.set(t.slice(0, eq).trim(), t.slice(eq + 1).trim());
+  // Env wins: the keyring SSOT overrides/reconciles the fallback file.
+  for (const [k, v] of Object.entries(process.env)) {
+    if (typeof v === "string" && v.length > 0) out.set(k, v);
+  }
+  // The pitchfork-managed daemon has NO keyring env in its [env] block
+  // (secrets are in the keyring SSOT). Make the daemon self-sufficient:
+  // shell out to `secretsmith env` once and import its exports, so every
+  // pool (GEMINI_EAP_KEY_*, NIM_*, ...) resolves without a wrapper in the
+  // supervisor. Never logs the values.
+  try {
+    const proc = Bun.spawnSync(["secretsmith", "env"], {
+      stdout: "pipe",
+      stderr: "ignore",
+    });
+    if (proc.exitCode === 0) {
+      const text = new TextDecoder().decode(proc.stdout);
+      for (const line of text.split("\n")) {
+        const t = line.trim();
+        if (!t || t.startsWith("#")) continue;
+        const eq = t.indexOf("=");
+        if (eq <= 0) continue;
+        const k = t.slice(0, eq).trim();
+        const v = t.slice(eq + 1).trim();
+        if (k.startsWith("GEMINI_EAP_") || /_API_KEY(_[A-Z0-9]+)?$/.test(k)) {
+          if (!out.has(k)) out.set(k, v);
+        }
+      }
+    }
+  } catch {
+    /* keyring unavailable (headless/CI) — rely on file+env */
   }
   return out;
 }
@@ -189,8 +232,7 @@ export function loadKeypoolConfig(
       throw new Error(`keypool '${name}': no keys configured`);
     // cooldown.default -> cooldown_default
     const cd = (cfg as unknown as Record<string, unknown>)["cooldown"] as
-      | Record<string, number>
-      | undefined;
+      Record<string, number> | undefined;
     if (cd && typeof cd === "object" && "default" in cd) {
       cfg.cooldown_default = cd["default"];
       delete cd["default"];
