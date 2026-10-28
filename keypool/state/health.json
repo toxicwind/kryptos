@@ -1,0 +1,29 @@
+{
+ "pollinations": {
+  "endpoint": {
+   "ok": true,
+   "status": 200,
+   "last_probe": 1793124627.4668775,
+   "ok_until": 1793124927.4668775,
+   "cooldown_until": 0
+  }
+ },
+ "herd": {
+  "endpoint": {
+   "ok": true,
+   "status": 200,
+   "last_probe": 1791874693.9783454,
+   "ok_until": 1791874993.9783454,
+   "cooldown_until": 0
+  }
+ },
+ "beellama": {
+  "endpoint": {
+   "ok": true,
+   "status": 200,
+   "last_probe": 1793124627.469303,
+   "ok_until": 1793124927.469303,
+   "cooldown_until": 0
+  }
+ }
+}
