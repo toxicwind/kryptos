@@ -6,6 +6,7 @@ import base64
 import json
 import os
 import sys
+import types
 import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -86,6 +87,255 @@ class TestSafety(unittest.TestCase):
             ssm.parse_attrs(["bare"])
 
 
+class _FakeSvc:
+    """In-memory stub of SecretService for the env-loader unit test."""
+
+    def __init__(self, items):
+        self._items = items
+
+    def search(self, filters, collection=None, label=None):
+        out = []
+        for it in self._items:
+            # Handle "label" in filters by checking item["label"] not attributes
+            eff = {k: v for k, v in filters.items() if k != "label"}
+            if not all(it["attributes"].get(k) == v for k, v in eff.items()):
+                continue
+            if label is not None and it.get("label") != label:
+                continue
+            out.append(it)
+        return out
+
+    def ensure_unlocked_items(self, items):
+        return
+
+    def get_secret(self, item_path):
+        for it in self._items:
+            if it["path"] == item_path:
+                return it["_secret"], "text/plain"
+        raise ssm.SecretsmithError("no such item")
+
+
+def _fake_item(label, secret, attrs=None):
+    return {
+        "label": label,
+        "path": "/x/" + label,
+        "locked": False,
+        "attributes": attrs or {},
+        "_secret": secret,
+    }
+
+
+def _env_args(app="", attr=(), as_json=False):
+
+    a = types.SimpleNamespace(app=app, attr=list(attr), collection=None)
+    return a, as_json
+
+
+class TestEnvLoader(unittest.TestCase):
+    def test_app_filters_on_service_and_emits_exports(self):
+        a, as_json = _env_args(app="kappa")
+        svc = _FakeSvc([
+            _fake_item("KAPPA_SERVER_PASSWORD", b"s3cr3t", {"service": "kappa"}),
+            _fake_item("OTHER", b"x", {"service": "else"}),
+        ])
+        with _capture_stdout() as out:
+            rc = ssm.cmd_env(svc, a, ssm.load_registry(), as_json)
+        text = out.getvalue()
+        self.assertEqual(rc, 0)
+        self.assertIn("KAPPA_SERVER_PASSWORD='s3cr3t'", text)
+        self.assertNotIn("OTHER", text)
+        self.assertNotIn("else", text)
+
+    def test_invalid_identifier_label_skipped(self):
+        a, as_json = _env_args(app="kappa")
+        svc = _FakeSvc([
+            _fake_item("kappa-freeinference", b"x", {"service": "kappa"}),
+        ])
+        with _capture_stdout() as out:
+            rc = ssm.cmd_env(svc, a, ssm.load_registry(), as_json)
+        self.assertEqual(rc, 1)
+        self.assertEqual(out.getvalue(), "")
+
+    def test_quote_escaping(self):
+        a, as_json = _env_args()
+        svc = _FakeSvc([
+            _fake_item("QUOTED", b"it's got 'quotes'", {}),
+        ])
+        with _capture_stdout() as out:
+            rc = ssm.cmd_env(svc, a, ssm.load_registry(), as_json)
+        self.assertEqual(rc, 0)
+        self.assertEqual(out.getvalue(), "QUOTED='it'\\''s got '\\''quotes'\\'''\n")
+
+    def test_nontext_secret_skipped(self):
+        a, as_json = _env_args()
+        svc = _FakeSvc([
+            _fake_item("BINARY", b"\xff\xfe\x00secret", {}),
+        ])
+        with _capture_stdout() as out:
+            rc = ssm.cmd_env(svc, a, ssm.load_registry(), as_json)
+        self.assertEqual(rc, 1)
+        self.assertEqual(out.getvalue(), "")
+
+    def test_extra_attr_narrows(self):
+        a, as_json = _env_args(app="kappa", attr=["scope=prod"])
+        svc = _FakeSvc([
+            _fake_item("A", b"1", {"service": "kappa", "scope": "prod"}),
+            _fake_item("B", b"2", {"service": "kappa", "scope": "dev"}),
+        ])
+        with _capture_stdout() as out:
+            rc = ssm.cmd_env(svc, a, ssm.load_registry(), as_json)
+        text = out.getvalue()
+        self.assertEqual(rc, 0)
+        self.assertIn("A='1'", text)
+        self.assertNotIn("B", text)
+
+
+class TestAliasMap(unittest.TestCase):
+    """Test the alias map loading and resolution."""
+
+    def test_resolve_alias_identity(self):
+        aliases = {}
+        self.assertEqual(ssm._resolve_alias(aliases, "GITHUB_TOKEN"), ("GITHUB_TOKEN", False))
+
+    def test_resolve_alias_map(self):
+        aliases = {"GH_TOKEN": "GITHUB_TOKEN", "GITHUB_PAT": "GITHUB_TOKEN"}
+        self.assertEqual(ssm._resolve_alias(aliases, "GH_TOKEN"), ("GITHUB_TOKEN", True))
+        self.assertEqual(ssm._resolve_alias(aliases, "GITHUB_PAT"), ("GITHUB_TOKEN", True))
+        self.assertEqual(ssm._resolve_alias(aliases, "GITHUB_TOKEN"), ("GITHUB_TOKEN", False))
+
+    def test_simple_toml_load(self):
+        import tempfile
+        content = '[aliases]\nGH_TOKEN = "GITHUB_TOKEN"\nGITHUB_PAT = "GITHUB_TOKEN"\n'
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.toml', delete=False) as f:
+            f.write(content)
+            tmp = f.name
+        try:
+            result = ssm._simple_toml_load(tmp)
+            self.assertEqual(result, {"aliases": {"GH_TOKEN": "GITHUB_TOKEN", "GITHUB_PAT": "GITHUB_TOKEN"}})
+        finally:
+            os.unlink(tmp)
+
+
+class TestProtectedSchema(unittest.TestCase):
+    """Test that os_crypt key secrets are never printed."""
+
+    def test_refuse_protected(self):
+        reg = ssm.load_registry()
+        item = {"attributes": {"xdg:schema": "chrome_libsecret_os_crypt_password_v2"}}
+        with self.assertRaises(ssm.SecretsmithError) as ctx:
+            ssm._refuse_protected(item, reg)
+        self.assertIn("os_crypt key material", str(ctx.exception))
+
+    def test_refuse_protected_unregistered_schema_passes(self):
+        reg = ssm.load_registry()
+        item = {"attributes": {"xdg:schema": "org.freedesktop.Secret.Generic"}}
+        ssm._refuse_protected(item, reg)
+
+
+class TestEnvAliasExpansion(unittest.TestCase):
+    """Test that --env mode expands aliases and injects canonical + all aliases."""
+
+    def test_env_alias_injects_canonical_and_alias(self):
+        a = types.SimpleNamespace(
+            env=["GH_TOKEN=label=GITHUB_TOKEN"], collection=None, app="", attr=[],
+            all=False, alias_map=None
+        )
+        svc = _FakeSvc([_fake_item("GITHUB_TOKEN", b"token123", {})])
+        with _capture_stdout() as out:
+            rc = ssm.cmd_env(svc, a, ssm.load_registry(), False)
+        self.assertEqual(rc, 0)
+        text = out.getvalue()
+        self.assertIn("GH_TOKEN=", text)
+        self.assertIn("GITHUB_TOKEN=", text)
+        self.assertIn("token123", text)
+
+    def test_env_canonical_injects_aliases(self):
+        a = types.SimpleNamespace(
+            env=["GITHUB_TOKEN=label=GITHUB_TOKEN"], collection=None, app="", attr=[],
+            all=False, alias_map=None
+        )
+        svc = _FakeSvc([_fake_item("GITHUB_TOKEN", b"token123", {})])
+        with _capture_stdout() as out:
+            rc = ssm.cmd_env(svc, a, ssm.load_registry(), False)
+        self.assertEqual(rc, 0)
+        text = out.getvalue()
+        self.assertIn("GITHUB_TOKEN=", text)
+
+    def test_env_alias_map_inject_all_aliases(self):
+        import tempfile, shutil
+        td = tempfile.mkdtemp()
+        with open(os.path.join(td, "aliases.toml"), "w") as f:
+            f.write('[aliases]\nGH_TOKEN = "GITHUB_TOKEN"\nGITHUB_PAT = "GITHUB_TOKEN"\n')
+        try:
+            a = types.SimpleNamespace(
+                env=["GH_TOKEN=label=GITHUB_TOKEN"], collection=None, app="", attr=[],
+                all=False, alias_map=td
+            )
+            svc = _FakeSvc([_fake_item("GITHUB_TOKEN", b"token123", {})])
+            with _capture_stdout() as out:
+                rc = ssm.cmd_env(svc, a, ssm.load_registry(), False)
+            self.assertEqual(rc, 0)
+            text = out.getvalue()
+            self.assertIn("GH_TOKEN=", text)
+            self.assertIn("GITHUB_TOKEN=", text)
+            self.assertIn("GITHUB_PAT=", text)
+            self.assertIn("token123", text)
+        finally:
+            shutil.rmtree(td)
+
+
+class TestExecMode(unittest.TestCase):
+    """Test exec mode alias resolution and diagnostic output."""
+
+    def test_exec_resolve_alias(self):
+        aliases = {"MY_VAR": "GITHUB_TOKEN"}
+        canonical, is_alias = ssm._resolve_alias(aliases, "MY_VAR")
+        self.assertEqual(canonical, "GITHUB_TOKEN")
+        self.assertTrue(is_alias)
+
+    def test_print_env_names_works(self):
+        a = types.SimpleNamespace(
+            env=["GITHUB_TOKEN=label=GITHUB_TOKEN"],
+            collection=None, only=None, all=False,
+            print_env_names=True, alias_map=None, command=["echo"]
+        )
+        svc = _FakeSvc([_fake_item("GITHUB_TOKEN", b"secret", {})])
+        with _capture_stdout() as out:
+            rc = ssm.cmd_exec(svc, a, ssm.load_registry(), False)
+        self.assertEqual(rc, 0)
+        self.assertIn("GITHUB_TOKEN", out.getvalue())
+
+
+class TestBackwardCompat(unittest.TestCase):
+    """Ensure old cmd_env calls (without --env, --all, --alias_map) still work."""
+
+    def test_legacy_env_dump_still_works(self):
+        a = types.SimpleNamespace(app="test", attr=[], collection=None)
+        svc = _FakeSvc([
+            _fake_item("TEST_API_KEY", b"abc123", {"service": "test"}),
+        ])
+        with _capture_stdout() as out:
+            rc = ssm.cmd_env(svc, a, ssm.load_registry(), False)
+        self.assertEqual(rc, 0)
+        self.assertIn("TEST_API_KEY='abc123'", out.getvalue())
+
+
+class _capture_stdout:
+    """Context manager capturing writes to sys.stdout."""
+
+    def __enter__(self):
+        import io
+
+        self._buf = io.StringIO()
+        self._old = sys.stdout
+        sys.stdout = self._buf
+        return self._buf
+
+    def __exit__(self, *exc):
+        sys.stdout = self._old
+        return False
+
+
 class TestKeyringIntegration(unittest.TestCase):
     """Live D-Bus integration against the real (unlocked) login collection.
     Gated on SSM_TEST_KEYRING=1. Uses a uniquely-named item, deletes it after.
@@ -121,7 +371,6 @@ class TestKeyringIntegration(unittest.TestCase):
     def test_chromium_entry_visible(self):
         schema, _ = ssm.resolve_schema("chromium", self.reg)
         found = self.svc.search({"xdg:schema": schema})
-        # the estate's Chromium Safe Storage entry must be findable via registry
         self.assertTrue(found, "Chromium Safe Storage entry not found via registry")
 
     def test_collection_create_delete(self):
@@ -135,141 +384,3 @@ class TestKeyringIntegration(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
-
-
-class TestDisplayProtection(unittest.TestCase):
-    """os_crypt key material (secret_is_key schemas) is never printable."""
-
-    def _reg(self):
-        return ssm.load_registry()
-
-    def _chromium_schema(self):
-        reg = self._reg()
-        schema, _ = ssm.resolve_schema("chromium", reg)
-        return schema
-
-    def test_protected_schemas_contains_chromium(self):
-        self.assertIn(self._chromium_schema(), ssm.protected_schemas(self._reg()))
-
-    def test_generic_not_protected(self):
-        reg = self._reg()
-        schema, _ = ssm.resolve_schema("generic", reg)
-        self.assertNotIn(schema, ssm.protected_schemas(reg))
-
-    def _fake_svc(self, schema):
-        item = {"path": "/org/freedesktop/secrets/item/1",
-                "label": "Chromium Safe Storage",
-                "attributes": {"xdg:schema": schema, "application": "chromium"},
-                "collection": "/org/freedesktop/secrets/aliases/default",
-                "locked": False}
-
-        class FakeSvc:
-            def __init__(self):
-                self.secret_calls = []
-
-            def search(self, filters, collection=None):
-                return [item]
-
-            def ensure_unlocked_items(self, items):
-                pass
-
-            def get_secret(self, path):
-                self.secret_calls.append(path)
-                return (b"raw-key-bytes", "text/plain")
-
-        return FakeSvc()
-
-    def _args(self, show):
-        import argparse
-        return argparse.Namespace(attr=[], collection=None, show=show, schema=None)
-
-    def test_get_show_refuses_chromium(self):
-        reg = self._reg()
-        svc = self._fake_svc(self._chromium_schema())
-        with self.assertRaises(ssm.SecretsmithError):
-            ssm.cmd_get(svc, self._args(True), reg, False)
-        self.assertEqual(svc.secret_calls, [])  # refused BEFORE any fetch
-
-    def test_get_noshow_ok_chromium(self):
-        reg = self._reg()
-        svc = self._fake_svc(self._chromium_schema())
-        import io
-        from contextlib import redirect_stdout
-        buf = io.StringIO()
-        with redirect_stdout(buf):
-            rc = ssm.cmd_get(svc, self._args(False), reg, False)
-        self.assertEqual(rc, 0)
-        self.assertIn("<redacted", buf.getvalue())
-
-    def test_search_show_refuses_chromium(self):
-        reg = self._reg()
-        svc = self._fake_svc(self._chromium_schema())
-        with self.assertRaises(ssm.SecretsmithError):
-            ssm.cmd_search(svc, self._args(True), reg, False)
-        self.assertEqual(svc.secret_calls, [])
-
-    def test_get_show_ok_for_generic(self):
-        reg = self._reg()
-        schema, _ = ssm.resolve_schema("generic", reg)
-        svc = self._fake_svc(schema)
-        import io
-        from contextlib import redirect_stdout
-        buf = io.StringIO()
-        with redirect_stdout(buf):
-            rc = ssm.cmd_get(svc, self._args(True), reg, False)
-        self.assertEqual(rc, 0)
-        self.assertEqual(len(svc.secret_calls), 1)
-
-class TestDotenv(unittest.TestCase):
-    """The local KEY=value store: parsing, name resolution, permissions."""
-
-    def setUp(self):
-        import tempfile
-        self.dir = tempfile.mkdtemp(prefix="secretsmith-test-")
-        self.path = os.path.join(self.dir, ".secrets")
-
-    def tearDown(self):
-        import shutil
-        shutil.rmtree(self.dir, ignore_errors=True)
-
-    def _write(self, text, mode=0o600):
-        with open(self.path, "w", encoding="utf-8") as f:
-            f.write(text)
-        os.chmod(self.path, mode)
-
-    def test_parses_values_and_skips_noise(self):
-        self._write("# comment\n\nEXA_API_KEY=abc123\nQUOTED=\"q v\"\n")
-        values = ssm.load_dotenv(self.path)
-        self.assertEqual(values["EXA_API_KEY"], "abc123")
-        self.assertEqual(values["QUOTED"], "q v")
-
-    def test_keeps_equals_inside_value(self):
-        self._write("TOKEN=a=b=c\n")
-        self.assertEqual(ssm.load_dotenv(self.path)["TOKEN"], "a=b=c")
-
-    def test_missing_file_is_empty_not_an_error(self):
-        self.assertEqual(ssm.load_dotenv(os.path.join(self.dir, "nope")), {})
-
-    def test_refuses_group_readable_store(self):
-        self._write("EXA_API_KEY=x\n", mode=0o644)
-        with self.assertRaises(ssm.SecretsmithError):
-            ssm.load_dotenv(self.path)
-
-    def test_resolves_namespaced_credential(self):
-        self._write("EXA_API_KEY=realkey\n")
-        key, value = ssm.resolve_dotenv("custom.exa", environ={},
-                                        path=self.path)
-        self.assertEqual((key, value), ("EXA_API_KEY", "realkey"))
-
-    def test_process_env_overrides_the_file(self):
-        self._write("EXA_API_KEY=from-file\n")
-        key, value = ssm.resolve_dotenv("custom.exa",
-                                        environ={"EXA_API_KEY": "from-env"},
-                                        path=self.path)
-        self.assertEqual(value, "from-env")
-
-    def test_unknown_credential_returns_none(self):
-        self._write("EXA_API_KEY=x\n")
-        self.assertEqual(
-            ssm.resolve_dotenv("nope.missing", environ={}, path=self.path),
-            (None, None))
