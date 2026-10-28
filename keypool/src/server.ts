@@ -6,6 +6,7 @@ import { Pool, raceFirstValid, extractModel, upstreamAuthHeader } from "./pool.j
 import type { KeyState } from "./types.js";
 import { Auditor } from "./audit.js";
 import { openaiToInteractions, interactionsToOpenai } from "./translate.js";
+import { QuotaTracker } from "./quota.js";
 
 const HOP_HEADERS = new Set([
   "connection",
@@ -97,6 +98,7 @@ export interface ServerDeps {
   getPools: () => Map<string, Pool>;
   auditor: Auditor;
   raceKeys: number;
+  quota: QuotaTracker;
 }
 
 /**
@@ -141,6 +143,15 @@ async function serveEapModels(pool: Pool): Promise<Response> {
 	}
 }
 
+/** Record spend from an OpenAI-compat upstream JSON body (usage.total_cost USD). */
+function recordUsageSpend(quota: QuotaTracker, bodyText: string): void {
+  try {
+    const j = JSON.parse(bodyText) as { usage?: { total_cost?: number } };
+    const cost = j.usage?.total_cost;
+    if (typeof cost === "number" && cost > 0) quota.spend(cost);
+  } catch { /* stream/translate path — no top-level usage */ }
+}
+
 export function createHandler(deps: ServerDeps) {
   const { getPools, auditor, raceKeys } = deps;
 
@@ -151,6 +162,11 @@ export function createHandler(deps: ServerDeps) {
     // /health
     if (path === "/health" && req.method === "GET") {
       return Response.json({ ok: true, service: "keypool" }, { headers: { "Access-Control-Allow-Origin": "*" } });
+    }
+
+    // /quota — FreeInference pro-plan daily ledger (role:pro $160/day, UTC reset)
+    if (path === "/quota" && req.method === "GET") {
+      return Response.json(deps.quota.snapshot(), { headers: { "Access-Control-Allow-Origin": "*" } });
     }
 
     // /status

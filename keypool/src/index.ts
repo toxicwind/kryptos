@@ -6,6 +6,7 @@ import { loadKeypoolConfig } from "./config.js";
 import { Auditor } from "./audit.js";
 import { createHandler } from "./server.js";
 import { Poller } from "./poller.js";
+import { QuotaTracker } from "./quota.js";
 
 const SERVICE = "keypool";
 const PORT_ENV = "KEYPOOL_PORT";
@@ -70,7 +71,7 @@ const port = requiredPort();
 const server = Bun.serve({
   port,
   hostname: "127.0.0.1",
-  fetch: createHandler({ getPools: () => pools, auditor, raceKeys: RACE_KEYS }),
+  fetch: createHandler({ getPools: () => pools, auditor, raceKeys: RACE_KEYS, quota: QuotaTracker.open(16000, "/home/toxic/.rig/keypool/quota-ledger.json") }),
 });
 
 console.log(
