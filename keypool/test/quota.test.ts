@@ -1,6 +1,9 @@
-import { describe, test, expect } from "bun:test";
+import { describe, test, expect, beforeAll } from "bun:test";
+import { rmSync } from "node:fs";
 import { QuotaTracker, utcDayKey } from "../src/quota.js";
 const D = "/tmp/qtest-129121";
+
+beforeAll(() => { try { rmSync("/tmp/qtest-129121", { recursive: true, force: true }); } catch {} });
 
 describe("QuotaTracker (pro \$160/day, UTC-midnight reset)", () => {
   test("spend accumulates and remaining decrements", () => {
