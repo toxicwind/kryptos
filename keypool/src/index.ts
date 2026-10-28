@@ -23,12 +23,12 @@ function requiredPort(): number {
 }
 
 const POOLS_PATH =
-  process.env["KEYPOOL_CONFIG"] ?? "/home/toxic/estate/config/keypools.yaml";
+  process.env["KEYPOOL_CONFIG"] ?? "/home/toxic/pens/estate/config/keypools.yaml";
 const SECRETS_PATH =
   process.env["KEYPOOL_SECRETS"] ?? "/home/toxic/.secrets";
 const AUDIT_PATH =
   process.env["KEYPOOL_AUDIT"] ??
-  "/home/toxic/estate/data/keypool-audit.jsonl";
+  "/home/toxic/pens/estate/data/keypool-audit.jsonl";
 const AUDIT_MAX = Number(process.env["KEYPOOL_AUDIT_MAX_BYTES"] ?? 50 * 1024 * 1024);
 const RACE_KEYS = Number(process.env["KEYPOOL_RACE_KEYS"] ?? 1);
 const HEALTHY_TTL_MS = Number(process.env["KEYPOOL_HEALTHY_TTL"] ?? 300) * 1000;
