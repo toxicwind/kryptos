@@ -48,3 +48,10 @@ libsecret code. Fork lineage documented for provenance: [GNOME/libsecret](https:
 ## License
 
 MIT — see [LICENSE](LICENSE).
+
+## Secrets SSOT layout
+
+- **Keyring** (D-Bus Secret Service, `Default Keyring`) = the SSOT. `secretsmith env --app <name>` injects an app's keys (matches `service` attribute OR `<APP>_*` label prefix — anomaly #16 contract).
+- **keypool** keys are stamped `service=keypool` (12 items: OPENROUTER_*, GEMINI_EAP_KEY*, FREEINFERENCE_API_KEY, MISTRAL_API_KEY) — stanza runs `eval $(secretsmith env --app keypool)`.
+- **Recovery vault** `/home/toxic/estate-secrets-recovery/` = post-archive cherry-pick of irreplaceable keys (CA, phone, PGP, graveyard). Not tracked in git (push-protection enforced 2026-10-28).
+- **`~/.secrets`** = retired fallback record; keyring gap-fill overrides it (loadSecrets: env → file → keyring).
