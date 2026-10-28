@@ -1,8 +1,6 @@
-$schema: 'https://moonrepo.dev/schemas/project.json'
-
-# kryptos — ranch component (Greek-named where descriptive).
-language: 'typescript'
-stack: 'backend'
-tags:
-  - 'ranch'
-  - 'component'
+# kryptos — secrets SSOT product (kryptos = "hidden")
+# The ONE secretsmith + keypool home. Vendored copies retired 2026-10-28.
+language: python
+tasks:
+  test:
+    command: "bash bin/secretsmith --help >/dev/null && cd keypool && bun test"
