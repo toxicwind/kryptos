@@ -1341,7 +1341,7 @@ interface Args {
   [k: string]: any;
 }
 
-function parse(argv: string[]): Args {
+export function parse(argv: string[]): Args {
   const a: Args = {
     cmd: null,
     attr: [],
@@ -1425,6 +1425,17 @@ function parse(argv: string[]): Args {
       a.no_fuzzy = flags("--no-fuzzy");
       repeated("--attr", "attr");
       flagVal("--collection", "collection");
+      // Positional label support (anomaly #61): `secretsmith get LABEL` used
+      // to silently DROP the positional, so `search({})` matched everything
+      // and an arbitrary first keyring item was returned. Bare positionals
+      // that are not flags are the label; an explicit --label still wins.
+      if (a.label === undefined) {
+        const pos = rest.find(tok => !tok.startsWith("--"));
+        if (pos !== undefined) {
+          a.label = pos;
+          rest.splice(rest.indexOf(pos), 1);
+        }
+      }
       break;
     case "set":
       if (!flagVal("--label", "label"))
