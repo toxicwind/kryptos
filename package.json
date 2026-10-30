@@ -1,4 +1,8 @@
 {
+  "devDependencies": {
+    "@types/bun": "^1.4.4",
+    "bun-types": "^1.4.4"
+  },
   "name": "kryptos",
   "version": "1.0.0",
   "description": "The maximal freedesktop Secret Service CLI + keypool — secrets SSOT (kryptos = hidden)",
