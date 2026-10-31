@@ -1400,8 +1400,8 @@ def cmd_cookie_vault_sync(svc, a, registry, as_json):
     import subprocess
 
     candidates = [
-        "/home/toxic/estate/ranch/cookie-vault/bin/cookie-vault.js",
-        "/home/toxic/estate/ranch/barn/browserless/bin/cookie-vault.ts",
+        "/home/toxic/pens/estate/ranch/cookie-vault/bin/cookie-vault.js",
+        "/home/toxic/pens/estate/ranch/barn/browserless/bin/cookie-vault.ts",
     ]
     cookie_vault_bin = next((c for c in candidates if os.path.exists(c)), candidates[0])
     subcmd = a.vault_action or "sync"

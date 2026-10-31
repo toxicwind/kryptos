@@ -1,0 +1,10 @@
+# Keypool configuration
+# Secrets are loaded from KEYPOOL_SECRETS environment variable or this file
+
+# Cloudflare API token for key management
+CLOUDFLARE_API_TOKEN: "YOUR_CLOUDFLARE_API_TOKEN_HERE"
+
+# Other secrets can be added here
+# AWS_ACCESS_KEY_ID
+# AWS_SECRET_ACCESS_KEY
+# GOOGLE_API_KEY
