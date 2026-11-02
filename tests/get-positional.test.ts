@@ -32,4 +32,35 @@ describe("secretsmith get positional label", () => {
 		const a = parse(["get", "--attr", "service=app"]);
 		expect(a.label).toBeUndefined();
 	});
+
+	test("get with missing label errors — never returns an arbitrary item (anomaly 63)", async () => {
+		const missing = "MISSING_LABEL_" + Date.now();
+		// Live CLI contract, not parse-shape: a nonexistent label MUST error.
+		const proc = Bun.spawn(["bun", "secretsmith.ts", "get", missing], {
+			cwd: import.meta.dir + "/..",
+			stdout: "pipe",
+			stderr: "pipe",
+		});
+		const stdout = await Bun.readableStreamToText(proc.stdout);
+		const stderr = await Bun.readableStreamToText(proc.stderr);
+		const exit = await proc.exited;
+		// Contract: a missing label MUST error (never return an arbitrary first
+		// item — the anomaly-63 defect). The error text need not echo the label.
+		expect(stderr).toContain("no item matches");
+		expect(stdout).toBe("");
+		expect(exit).not.toBe(0);
+	});
+
+	test("get label-echo: returned item echoes the EXACT requested label", async () => {
+		// The label is the key contract — a fuzzy/wrong fetch is the defect.
+		const proc = Bun.spawn(["bun", "secretsmith.ts", "get", "GITHUB_TOKEN"], {
+			cwd: import.meta.dir + "/..",
+			stdout: "pipe",
+			stderr: "pipe",
+		});
+		const stdout = await Bun.readableStreamToText(proc.stdout);
+		const exit = await proc.exited;
+		expect(exit).toBe(0);
+		expect(stdout).toContain("label: GITHUB_TOKEN");
+	});
 });
