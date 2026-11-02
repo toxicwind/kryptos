@@ -1599,9 +1599,134 @@ async function main(): Promise<number> {
 }
 
 function printUsage() {
-  console.log(`usage: secretsmith [--json] [--show]
-                   {search,get,set,delete,collections,collection-create,collection-delete,lock,unlock,schemas,env,exec,check,chromium-key,chromium-logins,chromium-cookies,bw-status,bw-get,cookie-vault,tau-auth-sync} ...`);
+  const cmd = process.argv.slice(2).find((t) => !t.startsWith("--"));
+  console.log(USAGE[cmd ?? ""] ?? USAGE._root);
 }
+
+const USAGE: Record<string, string> = {
+  _root: `secretsmith — keyring SSOT CLI (Secret Service / D-Bus)
+
+usage: secretsmith [--json] [--show] [--bus <addr>] <command> [args] [flags]
+
+Global flags:
+  --json          machine-readable output (per command)
+  --show          print secret VALUES (default redacts)
+  --bus <addr>    D-Bus session address override
+
+Credential commands:
+  search [query] [--schema S] [--attr k=v]... [--collection C]
+      list keyring items; label/attr match, fuzzy off with --no-fuzzy on get
+  get <label> [--attr k=v]... [--collection C] [--no-fuzzy]
+      fetch one item; add --show to print the secret value
+  set --label L [--attr k=v]... [--collection C] (--secret-file F | --value V | stdin)
+      create/replace; stdin via: echo -n s | secretsmith set --label L
+  delete <label> [--attr k=v]... [--collection C] [--yes]
+  collections / collection-create <name> [--alias A] / collection-delete <name> [--yes]
+  lock|unlock <targets...>
+  schemas
+
+Consumption commands:
+  env [--env k=v]... [--app A] [--attr k=v]... [--all] [--alias-map F]
+      print KEY=VALUE lines for shell eval / keyring injection
+  exec [--env k=v]... [--only k]... [--all] -- <cmd> [args...]
+      run a command with keyring env injected (secrets never on argv)
+
+Browser/chromium lanes:
+  chromium-key                       profile cookie-decrypt key candidates
+  chromium-logins [--profile-dir D]  saved logins (origin/user/password)
+  chromium-cookies [--profile-dir D] cookies (host/name/decrypted value)
+  cookie-vault [sync]                sync browser cookies into the vault
+
+External stores:
+  bw-status                          bitwarden unlock state
+  bw-get <item_type> <id_or_name>    fetch from bitwarden
+
+tau integrations:
+  check                              credential health sweep
+  tau-auth-sync [--db-path P] [--collection C] [--content-type T]
+      sync tau-auth:* OAuth entries
+
+Help: secretsmith <command> --help`,
+  search: `secretsmith search — list keyring items
+
+usage: secretsmith [--json] search [query] [--schema S] [--attr k=v]... [--collection C]
+
+  query            substring label filter
+  --schema S       filter by schema attr
+  --attr k=v...    attribute filters (repeatable)
+  --collection C   restrict to collection
+  --json           array of {label, collection, attributes, created, modified}`,
+  get: `secretsmith get — fetch one item
+
+usage: secretsmith [--json] [--show] get <label> [--attr k=v]... [--collection C] [--no-fuzzy]
+
+  --show           print the secret value (default: redacted)
+  --no-fuzzy       exact-label match only (default allows fuzzy)
+  --json           {label, path, content_type, secret, secret_base64}
+NOTE: ambiguous labels resolve arbitrarily on fuzzy match — prefer --no-fuzzy
+for automation (anomaly #63: wrong-item fallback).`,
+  set: `secretsmith set — create/replace an item
+
+usage: secretsmith set --label L [--attr k=v]... [--collection C] [--replace]
+       (--secret-file F | --value V | stdin)
+
+  stdin form:  echo -n "secret" | secretsmith set --label L
+  --replace    allow overwriting an existing label
+RULES (2026-10-28): never --value for multiline; prefer stdin/--secret-file
+(anomaly #19: --secret-file emit path) — and stamp service attrs for
+--app lookups (anomaly #16/#58).`,
+  env: `secretsmith env — print KEY=VALUE for consumption
+
+usage: secretsmith env [--env k=v]... [--app A] [--attr k=v]... [--all] [--alias-map F]
+
+  --app A          include service-unbound keys via label/prefix match
+                   (anomaly #16) — needs service attributes stamped (anomaly #58)
+  --all            include locked collections (fails per-item otherwise)
+  --env k=v        extra passthrough values (file values WIN over ambient,
+                   anomaly #51/#59 merge order)`,
+  exec: `secretsmith exec — run a command with injected keyring env
+
+usage: secretsmith exec [--env k=v]... [--only k]... [--all] -- <cmd> [args...]
+
+  --only k...      restrict which keys are injected
+Secrets go to the child's ENVIRON, never argv/stdout — safe for automation.`,
+  "chromium-cookies": `secretsmith chromium-cookies — decrypt browser cookies
+
+usage: secretsmith [--json] chromium-cookies [--profile-dir D]
+
+  --profile-dir D  default: ~/.config/chromium/Default
+Output: JSONL {host, name, value} (value null when undecryptable).`,
+  "chromium-logins": `secretsmith chromium-logins — decrypt saved logins
+
+usage: secretsmith [--json] chromium-logins [--profile-dir D]
+Output: JSONL {origin, username, password}.`,
+  "chromium-key": `secretsmith chromium-key — cookie-decrypt key candidates
+usage: secretsmith [--json] chromium-key`,
+  check: `secretsmith check — credential health sweep
+usage: secretsmith check`,
+  "cookie-vault": `secretsmith cookie-vault — sync browser cookies to vault
+usage: secretsmith cookie-vault [sync]`,
+  "tau-auth-sync": `secretsmith tau-auth-sync — sync tau-auth:* OAuth entries
+usage: secretsmith tau-auth-sync [--db-path P] [--collection C] [--content-type T]`,
+  collections: `secretsmith collections — list collections
+usage: secretsmith [--json] collections`,
+  "collection-create": `secretsmith collection-create — new collection
+usage: secretsmith collection-create <name> [--alias A]`,
+  "collection-delete": `secretsmith collection-delete — remove collection
+usage: secretsmith collection-delete <name> [--yes]`,
+  lock: `secretsmith lock — lock items/collections
+usage: secretsmith lock <targets...>`,
+  unlock: `secretsmith unlock — unlock items/collections
+usage: secretsmith unlock <targets...>`,
+  schemas: `secretsmith schemas — list known schema types
+usage: secretsmith schemas`,
+  delete: `secretsmith delete — remove an item
+usage: secretsmith delete <label> [--attr k=v]... [--collection C] [--yes]`,
+  "bw-status": `secretsmith bw-status — bitwarden unlock state
+usage: secretsmith bw-status`,
+  "bw-get": `secretsmith bw-get — fetch from bitwarden
+usage: secretsmith bw-get <item_type> <id_or_name>`,
+};
 
 if (import.meta.main) {
   const code = await main();
