@@ -1242,8 +1242,8 @@ async function cmdCookieVaultSync(
 ) {
   const subcmd = a.vault_action ?? "sync";
   const candidates = [
-    "/home/toxic/pens/ranch/cookie-vault/bin/cookie-vault.js",
-    "/home/toxic/pens/ranch/barn/browserless/bin/cookie-vault.ts",
+    // Canonical product home (post pen-reorg): ranch/products/cookie-vault.
+    "/home/toxic/pens/ranch/products/cookie-vault/bin/cookie-vault.js",
   ];
   const bin = candidates.find((c) => existsSync(c)) ?? candidates[0];
   const runner = bin.endsWith(".js")
