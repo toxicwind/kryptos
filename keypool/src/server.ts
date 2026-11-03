@@ -375,6 +375,25 @@ async function forward(
   const [authHeader, authValue] = upstreamAuthHeader(pool.upstream, pool.secretFor(ks.name));
   headers.set(authHeader, authValue);
 
+  // Freeinference coordinator integration: acquire permit before upstream request
+  const isFreeinference = pool.upstream === "https://freeinference.org/v1";
+  let permitId: string | null = null;
+  if (isFreeinference) {
+    const coordResp = await fetch("http://127.0.0.1:25250/acquire", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model: model || "unknown" }),
+    });
+    const coordData = await coordResp.json().catch(() => ({ ok: false }));
+    if (!coordData.ok) {
+      throw Object.assign(new Error(coordData.error || "coordinator acquire failed"), {
+        status: 503,
+        retryAfter: coordData.retryAfter || 30000,
+      });
+    }
+    permitId = coordData.requestId;
+  }
+
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), pool.requestTimeoutMs);
 
@@ -411,5 +430,13 @@ async function forward(
     throw Object.assign(e as Error, { status: 0 });
   } finally {
     clearTimeout(t);
+    // Release freeinference coordinator permit
+    if (isFreeinference && permitId) {
+      fetch("http://127.0.0.1:25250/release", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ requestId: permitId }),
+      }).catch(() => {}); // fire-and-forget
+    }
   }
 }
