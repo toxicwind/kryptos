@@ -573,7 +573,7 @@ async function cmdGet(
         ? isText(secret)
           ? `secret: ${secret.toString("utf8")}`
           : `secret (base64): ${secret.toString("base64")}`
-        : `secret: ${redact(secret.length)}  (use --show to print)`,
+        : `secret: ${redact(secret.length)}  (use --redact to keep masking)`,
     );
   }
   return 0;
@@ -1360,7 +1360,8 @@ export function parse(argv: string[]): Args {
     }
     return false;
   };
-  let rootShow = globalFlags("--show");
+  let rootShow = globalFlags("--show"); // legacy no-op: showing is the default now
+  let rootRedact = globalFlags("--redact"); // opt-in masking (audit/screens share paths)
   let rootJson = globalFlags("--json");
   let rootBus: string | undefined;
   const bi = rest.indexOf("--bus");
@@ -1400,7 +1401,15 @@ export function parse(argv: string[]): Args {
       rest.splice(i, 2);
     }
   };
-  a.show = flags("--show") || rootShow;
+  // Secrets print by DEFAULT (2026-11-02, architect order). The old
+  // redact-by-default taught agents to persist masked placeholders into files
+  // and audit scripts, which then 401'd against real APIs. `--redact` is the
+  // explicit opt-in for share/screenshot surfaces; `--show` is kept as a
+  // legacy no-op so existing scripts and docs keep working.
+  a.redact = flags("--redact") || rootRedact;
+  void flags("--show"); // legacy no-op, consumed for compat
+  void rootShow;
+  a.show = !a.redact;
   a.json = flags("--json") || rootJson;
   a.bus = (() => {
     const i = rest.indexOf("--bus");
@@ -1606,18 +1615,20 @@ function printUsage() {
 const USAGE: Record<string, string> = {
   _root: `secretsmith — keyring SSOT CLI (Secret Service / D-Bus)
 
-usage: secretsmith [--json] [--show] [--bus <addr>] <command> [args] [flags]
+usage: secretsmith [--json] [--redact] [--bus <addr>] <command> [args] [flags]
 
 Global flags:
   --json          machine-readable output (per command)
-  --show          print secret VALUES (default redacts)
+  --redact        mask secret VALUES (opt-in; default prints them — 2026-11-02
+                  architect order: redact-by-default made agents persist masked
+                  placeholders into files and broke real API usage)
   --bus <addr>    D-Bus session address override
 
 Credential commands:
   search [query] [--schema S] [--attr k=v]... [--collection C]
       list keyring items; label/attr match, fuzzy off with --no-fuzzy on get
   get <label> [--attr k=v]... [--collection C] [--no-fuzzy]
-      fetch one item; add --show to print the secret value
+      fetch one item; prints the secret value by default (--redact to mask)
   set --label L [--attr k=v]... [--collection C] (--secret-file F | --value V | stdin)
       create/replace; stdin via: echo -n s | secretsmith set --label L
   delete <label> [--attr k=v]... [--collection C] [--yes]
@@ -1655,12 +1666,14 @@ usage: secretsmith [--json] search [query] [--schema S] [--attr k=v]... [--colle
   --schema S       filter by schema attr
   --attr k=v...    attribute filters (repeatable)
   --collection C   restrict to collection
-  --json           array of {label, collection, attributes, created, modified}`,
+  --json           array of {label, collection, attributes, created, modified,
+                   secret_len, secret_preview} — previews print by default,
+                   --redact masks them`,
   get: `secretsmith get — fetch one item
 
-usage: secretsmith [--json] [--show] get <label> [--attr k=v]... [--collection C] [--no-fuzzy]
+usage: secretsmith [--json] [--redact] get <label> [--attr k=v]... [--collection C] [--no-fuzzy]
 
-  --show           print the secret value (default: redacted)
+  --redact         mask the secret value (default: prints it)
   --no-fuzzy       exact-label match only (default allows fuzzy)
   --json           {label, path, content_type, secret, secret_base64}
 NOTE: ambiguous labels resolve arbitrarily on fuzzy match — prefer --no-fuzzy

@@ -10,11 +10,15 @@
 
 ```bash
 secretsmith set MY_KEY                 # store into the Default keyring
-secretsmith get MY_KEY --show          # read (also --json)
+secretsmith get MY_KEY                 # read (secrets print by default)
+secretsmith get MY_KEY --redact        # mask for share/screenshot surfaces
 secretsmith env --app myapp            # export app-scoped env block
 secretsmith exec -- cmd args...        # run with secrets injected
 secretsmith tau-auth-sync              # mirror tau auth state
 ```
+
+> Full agent-facing usage, failure shapes, and the 2026-11-02 default-flip
+> rationale: [`estate/docs/secretsmith-guide.md`](../../../estate/docs/secretsmith-guide.md)
 
 ## What's inside
 
