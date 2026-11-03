@@ -1,3 +1,31 @@
 __pycache__/
 *.pyc
 keypool/tsconfig.tsbuildinfo
+# Session scratch: forensics txt, ad-hoc check/push scripts, key files.
+# Useful ones archived to pens/estate/archive/2026-11-03-tau-kryptos-scratch/.
+*-identity-chain.md
+*-quartets.md
+audit-*.txt
+check-*.sh
+check_*.sh
+commit-*.sh
+cred-ssot-*.txt
+find-*.sh
+find-*.out
+find_*.sh
+key-od.txt
+list_keys.sh
+kp-secrets.txt
+kryptos-license.sh
+kryptos-readme.sh
+push*.sh
+retire-*.sh
+rmdir-*.sh
+purge_*.sh
+purge-*.sh
+fake-authd.mjs
+compat-*.sh
+keyring-new-dump.txt
+secrets-*.txt
+*.key
+*.tsv
