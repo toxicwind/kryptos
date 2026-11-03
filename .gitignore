@@ -29,3 +29,9 @@ keyring-new-dump.txt
 secrets-*.txt
 *.key
 *.tsv
+finally-retire-ranch-kryptos.sh
+key-shootout.py
+mimetite-scripts.txt
+screenshots/
+secret-quarantine/
+smithers.db

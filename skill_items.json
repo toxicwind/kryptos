@@ -1,0 +1,290 @@
+[
+ {
+  "name": "agent-audit",
+  "desc": ">"
+ },
+ {
+  "name": "ast-bm25-racer",
+  "desc": ">"
+ },
+ {
+  "name": "btrfs-fclones-dedup",
+  "desc": "\"BTRFS block-level dedup using fclones group+dedupe (znver4, fast, 3-4s for 475k files)\""
+ },
+ {
+  "name": "ci-push-building-and-engine-audit",
+  "desc": "Automated CI/CD push building via mbx-cache and engine migration auditing"
+ },
+ {
+  "name": "cicd-push-building",
+  "desc": "Automated CI/CD push building via mbx-cache and git hooks with semantic versioning"
+ },
+ {
+  "name": "classifier-project",
+  "desc": ">"
+ },
+ {
+  "name": "classifier-safe-docs",
+  "desc": ">"
+ },
+ {
+  "name": "code-racer-swe",
+  "desc": "Universal Code Racer and Dynamic AST Engine for autonomous software engineering agents. Enables empirical multi-route symbol indexing and candidate patch benchmarking."
+ },
+ {
+  "name": "context7",
+  "desc": ">"
+ },
+ {
+  "name": "dedi-ops-consolidation",
+  "desc": "\"Procedure to consolidate the dedi-ops package, fix SSH connection, update deployment targets, and verify the dedicated server and agent functionality.\""
+ },
+ {
+  "name": "deep-research",
+  "desc": "\"Deep research combining Google Drive full-text search with Perplexity AI deep search. Paper-finder style: searches your Drive docs AND the web with high-effort reasoning. Use for research that needs both your private docs and public sources.\""
+ },
+ {
+  "name": "durability",
+  "desc": ">"
+ },
+ {
+  "name": "dynamic-ast-probe",
+  "desc": "High-speed AST scanner and circuit-breaker execution harness for Python repositories. Resolves missing async functions and manages multi-turn patch budgets."
+ },
+ {
+  "name": "emergent-mcts-graph",
+  "desc": "Monte Carlo Tree Search and Dynamic Runtime Subgraph Inducer for autonomous software engineering."
+ },
+ {
+  "name": "emergent-tasking",
+  "desc": "\"Run self-directed agent swarms: an oracle intake triages work into biddable tasks, bidder agents bid and execute, results are verified and settled, watchdogs supervise, everything narrates in squawk. Use when the user wants autonomous multi-agent tasking stood up or run.\""
+ },
+ {
+  "name": "exa",
+  "desc": "\"Use Exa when the user asks for Exa, neural web search, or this provider's API.\""
+ },
+ {
+  "name": "fast-browser",
+  "desc": ">"
+ },
+ {
+  "name": "fix-omp-launcher",
+  "desc": "Fix the omp launcher script to point to the correct fork binary and update symlinks"
+ },
+ {
+  "name": "fix-tau-session-corruption",
+  "desc": "Fix tau session store corruption caused by over-broad sed operations that double-replace paths"
+ },
+ {
+  "name": "fleet-push",
+  "desc": ">"
+ },
+ {
+  "name": "fleet-spawn",
+  "desc": ">"
+ },
+ {
+  "name": "fleet-status",
+  "desc": ">"
+ },
+ {
+  "name": "flicker",
+  "desc": ">"
+ },
+ {
+  "name": "gatehouse-mcp",
+  "desc": ">"
+ },
+ {
+  "name": "gguf-rank",
+  "desc": ">"
+ },
+ {
+  "name": "git-mutator",
+  "desc": ">"
+ },
+ {
+  "name": "github",
+  "desc": "\"Use Github when the user asks for Github or this provider's API.\""
+ },
+ {
+  "name": "github-mcp",
+  "desc": "\"Use Github Mcp when the user asks for Github Mcp or this provider's API.\""
+ },
+ {
+  "name": "hashline",
+  "desc": "\"Hash-anchored file editing for agents \u2014 the first-class edit tool. read a file to get stable xxh32 line anchors, patch by anchor (SWAP/DEL/INS.*/BLK.*/CUT/PUT); stale reads hard-rejected before they corrupt. Binary CLI (11 subcommands) + 6-tool MCP server (newline-delimited JSON-RPC) + daemon mode."
+ },
+ {
+  "name": "heg-ttc-engine",
+  "desc": "Hierarchical Entropy-Guided Test-Time Compute (HEG-TTC) Engine for autonomous software engineering."
+ },
+ {
+  "name": "herd-logging-pattern",
+  "desc": ">"
+ },
+ {
+  "name": "herd-subcommand-macros",
+  "desc": "Generate and update herd.yaml with autonomous subcommand macros from llama-server --help output"
+ },
+ {
+  "name": "hft-latency",
+  "desc": ">"
+ },
+ {
+  "name": "huggingface",
+  "desc": ">"
+ },
+ {
+  "name": "marquee",
+  "desc": ">"
+ },
+ {
+  "name": "maximal-sovereign-agentic-audit",
+  "desc": ">"
+ },
+ {
+  "name": "merge-workflow",
+  "desc": "\"Autonomous merge workflow for tau fork using weave, suture, conflict-tools, and bun reconciliation.\""
+ },
+ {
+  "name": "model-switch",
+  "desc": ">"
+ },
+ {
+  "name": "oracle-route",
+  "desc": ">"
+ },
+ {
+  "name": "paper-search",
+  "desc": ">"
+ },
+ {
+  "name": "parquet-ml",
+  "desc": ">"
+ },
+ {
+  "name": "phone-backup",
+  "desc": ">"
+ },
+ {
+  "name": "pr-review",
+  "desc": "Audit a GitHub PR and render a verdict \u2014 LGTM or NOT LGTM, every finding evidence-backed. Readiness gate first (merge conflicts / red CI = no verdict, stop), then a five-frame substance pass, a two-lane reviewer race, and our quality bar (real repro, in-tree regression test, raced designs, no monkey"
+ },
+ {
+  "name": "race",
+  "desc": "\"Chris's latency-first engineering doctrine (NOT trading): latency is a correctness criterion; race redundant approaches concurrently with fail-fast timeouts, first valid wins; measure everything, keep the fast path hot; maximal = wider not harder; never roll back; borrow before inventing. Reusable "
+ },
+ {
+  "name": "race-borrow",
+  "desc": ">"
+ },
+ {
+  "name": "readme",
+  "desc": "readme"
+ },
+ {
+  "name": "readme-audit-first",
+  "desc": "\"Audit-first README revitalization: verify claims against source, classify NORTH STAR vs SUBSYSTEM, diff only if wrong, preserve provenance tables, separate live bugs\""
+ },
+ {
+  "name": "repo-audit",
+  "desc": ">"
+ },
+ {
+  "name": "router",
+  "desc": ">"
+ },
+ {
+  "name": "save-maximal-recovery",
+  "desc": "\"Create recovery refs and diffs after destructive git operations \u2014 no head/tail, no git fsck\""
+ },
+ {
+  "name": "sentinel-native-xyz",
+  "desc": "Sentinel probe skill for discovery audit, native provider location."
+ },
+ {
+  "name": "skill-frontmatter-audit",
+  "desc": "Audit and fix SKILL.md frontmatter against the SkillFrontmatter spec"
+ },
+ {
+  "name": "smithers",
+  "desc": ">"
+ },
+ {
+  "name": "somasays",
+  "desc": ">"
+ },
+ {
+  "name": "sovereign-chat",
+  "desc": ">"
+ },
+ {
+  "name": "sovereign-hatch-toolkit",
+  "desc": "Noise_XX_25519_AESGCM_SHA256 handshake toolkit and atomic POSIX filesystem message bus (FSBus) for Python agent infrastructure."
+ },
+ {
+  "name": "sovereign-master-orchestrator",
+  "desc": "Master orchestration and raw compilation engine for distributed skills. Enforces 2-4 sections per sub-skill output, executes lossless raw multi-skill consolidation (N skills x M sections into N sections with M subsections verbatim without edit), mounts Dropbox as primary filesystem, uses Exa and Goo"
+ },
+ {
+  "name": "subagent-control",
+  "desc": ">"
+ },
+ {
+  "name": "sublinear-lora-foundry",
+  "desc": "Heterogeneous multi-LoRA dynamic adapter swapping, memory scheduling, and zero-downtime inference on consumer GPUs (RTX 3090 24GB). Use when orchestrating multiple specialized fine-tuned models over a single base LLM, managing VRAM pressure, eliminating timeout crashes during high-context allocation"
+ },
+ {
+  "name": "surgical-edit",
+  "desc": ">"
+ },
+ {
+  "name": "system-audit",
+  "desc": ""
+ },
+ {
+  "name": "tau-audit",
+  "desc": "\"Run the complete tau audit suite: tau-audit.sh (15 checks), tau-tmux audit.ts (7 checks), and frontmatter-audit.sh (69 SKILL.md files). All pass means the environment is clean.\""
+ },
+ {
+  "name": "tau-binary-build",
+  "desc": "Builds and deploys the tau binary when broken or missing"
+ },
+ {
+  "name": "tau-fork-pinning",
+  "desc": "\"Procedure for syncing, building, and immutably pinning Tau fork binaries.\""
+ },
+ {
+  "name": "tau-session-audit",
+  "desc": ">"
+ },
+ {
+  "name": "tau-tmux",
+  "desc": ">"
+ },
+ {
+  "name": "telemetric-runtime-oracle",
+  "desc": "Non-invasive runtime cognitive EKG supervisor and database-grounded observability engine for Super Ralph and Sovereign autonomous agents. Observes terminal HUD telemetry vectors and SQLite workflow transaction state without keystroke injection or socket overrides."
+ },
+ {
+  "name": "tmp-triage",
+  "desc": ">"
+ },
+ {
+  "name": "true-zero-copy-pcie-streaming",
+  "desc": "True zero-copy PCIe host-mapped memory streaming in Triton and CUDA runtime"
+ },
+ {
+  "name": "url-extract",
+  "desc": ">"
+ },
+ {
+  "name": "vansrouter-rtk-provenance-repair",
+  "desc": "Diagnose and durably repair VansRouter RTK tool-result interleaving without losing legitimate token savings."
+ },
+ {
+  "name": "zipfs-vault",
+  "desc": "\"Obfuscated zipfs repo on Google Drive: blobs with random names inside one zip, synced to a Drive folder. Use when content must never be served from a public endpoint but readers are authenticated (e.g. the Squawk fleet-chat feed).\""
+ }
+]
