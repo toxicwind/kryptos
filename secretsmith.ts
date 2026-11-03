@@ -622,6 +622,12 @@ async function cmdDelete(
   asJson: boolean,
 ) {
   const filters = parseAttrs(a.attr ?? []);
+  // Anomaly (2026-11-03 wipe): a delete with NEITHER label NOR attr filters
+  // matches every item in the collection. Refuse instead of nuking the ring.
+  if (a.label == null && Object.keys(filters).length === 0)
+    throw new SecretsmithError(
+      "delete requires --label or at least one --attr filter (refusing to match all items)",
+    );
   const found = await svc.search(filters, a.collection, a.label ?? null);
   if (!found.length)
     throw new SecretsmithError(`no item matches ${JSON.stringify(filters)}`);
@@ -1464,6 +1470,19 @@ export function parse(argv: string[]): Args {
       repeated("--attr", "attr");
       flagVal("--collection", "collection");
       a.yes = flags("--yes");
+      // Positional label support (anomaly #61 redux, 2026-11-03): the block
+      // below lived only in the `get` case, so `secretsmith delete LABEL`
+      // silently dropped LABEL and matched on filters alone — a bare
+      // `delete --attr app=x` (or fuzzy label) could wipe the whole ring.
+      // Bare positionals that are not flags are the label; explicit --label
+      // still wins. Delete REQUIRES a label or attr filter after this.
+      if (a.label === undefined) {
+        const pos = rest.find(tok => !tok.startsWith("--"));
+        if (pos !== undefined) {
+          a.label = pos;
+          rest.splice(rest.indexOf(pos), 1);
+        }
+      }
       break;
     case "collections":
       break;
