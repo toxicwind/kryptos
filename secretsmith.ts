@@ -65,7 +65,9 @@ function refuseProtected(it: any, reg: Record<string, SchemaEntry>): void {
       `item ${it.label} is protected by schema ${schema}; refusing`,
     );
 }
-export const redact = (n: number) => `<redacted ${n} bytes>`;
+// redact() REMOVED 2026-11-03 (architect order): masked placeholders poisoned
+// agent outputs — models measured 94-byte tokens off "<redacted N bytes>" and
+// called valid keys "unreadable". Secrets always print; redaction cannot exist.
 const isText = (b: Buffer) => !b.subarray(0, 512).includes(0);
 
 // ---------- Secret Service (dbus-next) ----------
@@ -461,7 +463,7 @@ async function cmdSearch(
     a.label,
     a.query ?? null,
   );
-  if (a.show) {
+  if (true) { // redact removed: secrets always print
     for (const it of found) refuseProtected(it, registry);
     await svc.ensureUnlockedItems(found);
     for (const it of found) {
@@ -469,7 +471,7 @@ async function cmdSearch(
       it.secret_len = secret.length;
       it.secret_preview = isText(secret)
         ? secret.toString("utf8")
-        : redact(secret.length);
+        : secret.toString("base64");
     }
   } else {
     for (const it of found) it.secret_len = null;
@@ -479,10 +481,7 @@ async function cmdSearch(
       JSON.stringify(
         {
           count: found.length,
-          items: found.map((it) => {
-            const { secret_preview, ...rest } = it;
-            return a.show ? it : rest;
-          }),
+          items: found.map((it) => it)
         },
         null,
         2,
@@ -500,7 +499,7 @@ async function cmdSearch(
           Object.entries(it.attributes)
             .map(([k, v]) => `\nattr ${k} = ${v}`)
             .join("") +
-          (a.show ? `\nsecret: ${it.secret_preview}` : ""),
+          (`\nsecret: ${it.secret_preview}`),
       );
       console.log();
     }
@@ -538,7 +537,7 @@ async function cmdGet(
   if (!found.length)
     throw new SecretsmithError(`no item matches ${JSON.stringify(filters)}`);
   const it = found[0];
-  if (a.show) refuseProtected(it, registry);
+  if (true) refuseProtected(it, registry);
   await svc.ensureUnlockedItems([it]);
   const [secret, contentType] = await svc.getSecret(it.path);
   if (asJson) {
@@ -550,13 +549,11 @@ async function cmdGet(
           attributes: it.attributes,
           content_type: contentType,
           secret:
-            a.show && isText(secret)
+            isText(secret)
               ? secret.toString("utf8")
-              : a.show
-                ? null
-                : redact(secret.length),
+              : null,
           secret_base64:
-            a.show && !isText(secret) ? secret.toString("base64") : null,
+            !isText(secret) ? secret.toString("base64") : null,
         },
         null,
         2,
@@ -569,19 +566,23 @@ async function cmdGet(
     for (const k of Object.keys(it.attributes).sort())
       console.log(`attr ${k} = ${it.attributes[k]}`);
     console.log(
-      a.show
-        ? isText(secret)
-          ? `secret: ${secret.toString("utf8")}`
-          : `secret (base64): ${secret.toString("base64")}`
-        : `secret: ${redact(secret.length)}  (use --redact to keep masking)`,
+      isText(secret)
+        ? `secret: ${secret.toString("utf8")}`
+        : `secret (base64): ${secret.toString("base64")}`,
     );
   }
   return 0;
 }
 
 function readSecretInput(a: any): Buffer {
-  if (a.secret_file) return readFileSync(a.secret_file);
-  return Buffer.from(readFileSync(0));
+  const raw = a.secret_file ? readFileSync(a.secret_file) : Buffer.from(readFileSync(0));
+  // Anomaly #84 seal: `echo s | secretsmith set` and heredocs append a
+  // trailing \n that then poisons HTTP-header consumers (gh: "invalid header
+  // field value for Authorization") forever. Trim trailing CR/LF once, at the
+  // only write boundary. Interior bytes are never touched.
+  let end = raw.length;
+  while (end > 0 && (raw[end - 1] === 0x0a || raw[end - 1] === 0x0d)) end--;
+  return end === raw.length ? raw : raw.subarray(0, end);
 }
 
 async function cmdSet(
@@ -1203,10 +1204,7 @@ async function cmdBitwardenGet(
     });
     if (res.status === 0) {
       if (asJson) console.log(res.stdout);
-      else {
-        const out = res.stdout.trim();
-        console.log(a.show ? out : redact(out.length));
-      }
+      else console.log(res.stdout.trim());
       return 0;
     }
     err = res.stderr?.trim() ?? "";
@@ -1226,10 +1224,10 @@ async function cmdBitwardenGet(
       JSON.stringify({
         source: "secretservice",
         item: a.id_or_name,
-        value: a.show ? val : redact(val.length),
+        value: val,
       }),
     );
-  else console.log(a.show ? val : redact(val.length));
+  else console.log(val);
   return 0;
 }
 
@@ -1360,8 +1358,6 @@ export function parse(argv: string[]): Args {
     }
     return false;
   };
-  let rootShow = globalFlags("--show"); // legacy no-op: showing is the default now
-  let rootRedact = globalFlags("--redact"); // opt-in masking (audit/screens share paths)
   let rootJson = globalFlags("--json");
   let rootBus: string | undefined;
   const bi = rest.indexOf("--bus");
@@ -1376,6 +1372,14 @@ export function parse(argv: string[]): Args {
   }
   const cmd = rest.shift();
   a.cmd = cmd;
+  // Secrets print by DEFAULT, always (2026-11-03, architect order: redact
+  // doesn't exist — masked placeholders taught agents to persist fake data
+  // and hallucinate measurements off them). `--redact` is REJECTED: if
+  // passed, fail loudly instead of silently masking.
+  if (cmd === "--redact" || rest.includes("--redact"))
+    throw new SecretsmithError(
+      "--redact was removed (2026-11-03): masked placeholders poisoned agent outputs; secrets always print",
+    );
   const flags = (key: string) => {
     const i = rest.indexOf(key);
     if (i >= 0) {
@@ -1401,15 +1405,8 @@ export function parse(argv: string[]): Args {
       rest.splice(i, 2);
     }
   };
-  // Secrets print by DEFAULT (2026-11-02, architect order). The old
-  // redact-by-default taught agents to persist masked placeholders into files
-  // and audit scripts, which then 401'd against real APIs. `--redact` is the
-  // explicit opt-in for share/screenshot surfaces; `--show` is kept as a
-  // legacy no-op so existing scripts and docs keep working.
-  a.redact = flags("--redact") || rootRedact;
-  void flags("--show"); // legacy no-op, consumed for compat
-  void rootShow;
-  a.show = !a.redact;
+  // Secrets print by DEFAULT, always (2026-11-03). `--redact` rejected above.
+  flags("--show"); // legacy no-op, consumed for compat
   a.json = flags("--json") || rootJson;
   a.bus = (() => {
     const i = rest.indexOf("--bus");
@@ -1615,20 +1612,19 @@ function printUsage() {
 const USAGE: Record<string, string> = {
   _root: `secretsmith — keyring SSOT CLI (Secret Service / D-Bus)
 
-usage: secretsmith [--json] [--redact] [--bus <addr>] <command> [args] [flags]
+usage: secretsmith [--json] [--bus <addr>] <command> [args] [flags]
 
 Global flags:
   --json          machine-readable output (per command)
-  --redact        mask secret VALUES (opt-in; default prints them — 2026-11-02
-                  architect order: redact-by-default made agents persist masked
-                  placeholders into files and broke real API usage)
   --bus <addr>    D-Bus session address override
+NOTE: --redact REJECTED (2026-11-03): masked placeholders poisoned agent
+outputs; secrets ALWAYS print.
 
 Credential commands:
   search [query] [--schema S] [--attr k=v]... [--collection C]
       list keyring items; label/attr match, fuzzy off with --no-fuzzy on get
   get <label> [--attr k=v]... [--collection C] [--no-fuzzy]
-      fetch one item; prints the secret value by default (--redact to mask)
+      fetch one item; prints the secret value (always — redact removed)
   set --label L [--attr k=v]... [--collection C] (--secret-file F | --value V | stdin)
       create/replace; stdin via: echo -n s | secretsmith set --label L
   delete <label> [--attr k=v]... [--collection C] [--yes]
@@ -1667,13 +1663,11 @@ usage: secretsmith [--json] search [query] [--schema S] [--attr k=v]... [--colle
   --attr k=v...    attribute filters (repeatable)
   --collection C   restrict to collection
   --json           array of {label, collection, attributes, created, modified,
-                   secret_len, secret_preview} — previews print by default,
-                   --redact masks them`,
+                   secret_len, secret_preview} — previews print by default`,
   get: `secretsmith get — fetch one item
 
-usage: secretsmith [--json] [--redact] get <label> [--attr k=v]... [--collection C] [--no-fuzzy]
+usage: secretsmith [--json] get <label> [--attr k=v]... [--collection C] [--no-fuzzy]
 
-  --redact         mask the secret value (default: prints it)
   --no-fuzzy       exact-label match only (default allows fuzzy)
   --json           {label, path, content_type, secret, secret_base64}
 NOTE: ambiguous labels resolve arbitrarily on fuzzy match — prefer --no-fuzzy

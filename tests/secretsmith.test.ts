@@ -6,7 +6,7 @@ import {
   keyCandidates,
   loadRegistry,
   parseAttrs,
-  redact,
+
   resolveSchema,
   SecretsmithError,
 } from "../secretsmith.ts";
@@ -107,10 +107,19 @@ describe("Secretsmith CLI & Integrations", () => {
     ).toThrow(SecretsmithError);
   });
 
-  test("safety helpers redact and parse attrs", () => {
-    expect(redact(24)).toBe("<redacted 24 bytes>");
+  test("parse attrs", () => {
     expect(parseAttrs(["a=1", "b=x=y"])).toEqual({ a: "1", b: "x=y" });
     expect(() => parseAttrs(["bare"])).toThrow(SecretsmithError);
+  });
+
+  test("redact is removed: --redact fails loudly", () => {
+    const res = Bun.spawnSync({
+      cmd: ["bun", "secretsmith.ts", "--redact", "get", "--label", "nonexistent-xyz"],
+      cwd: import.meta.dir + "/..",
+    });
+    expect(res.exitCode).not.toBe(0);
+    const err = res.stderr.toString();
+    expect(err).toContain("--redact was removed");
   });
 });
 
