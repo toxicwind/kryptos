@@ -179,12 +179,16 @@ export class SecretService {
     const props = {
       [`${IFACE_COLLECTION}.Label`]: new dbus.Variant("s", label),
     };
-    const [path, prompt] = (await this.service()).CreateCollection(
+    // CreateCollection returns { collection, prompt } per the spec — the old
+    // array destructure crashed with "{} is not iterable" on every call.
+    const res = await (await this.service()).CreateCollection(
       props,
       alias ?? "",
     );
-    if (String(prompt) !== "/") await this.awaitUnlock([String(path)]);
-    return String(path);
+    const path = String(res?.collection ?? res?.[0] ?? "");
+    const prompt = String(res?.prompt ?? res?.[1] ?? "/");
+    if (prompt !== "/") await this.awaitUnlock([prompt]);
+    return path;
   }
 
   async deleteCollection(target: string): Promise<string> {
