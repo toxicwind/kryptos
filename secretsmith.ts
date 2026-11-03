@@ -289,9 +289,13 @@ export class SecretService {
 
   async unlockPaths(paths: string[]) {
     if (!paths.length) return [];
-    const [unlocked, prompt] = (await this.service()).Unlock(paths);
-    if (String(prompt) !== "/") await this.awaitUnlock(paths.map(String));
-    return unlocked.map(String);
+    // Unlock returns { unlocked, prompt } per spec — the old array destructure
+    // crashed ("{} is not iterable") whenever the ring needed unlocking.
+    const res = await (await this.service()).Unlock(paths);
+    const prompt = String(res?.prompt ?? res?.[1] ?? "/");
+    if (prompt !== "/") await this.awaitUnlock([prompt]);
+    const unlocked = res?.unlocked ?? res?.[0] ?? [];
+    return (Array.isArray(unlocked) ? unlocked : [unlocked]).map(String);
   }
 
   async ensureUnlockedItems(items: any[]) {
