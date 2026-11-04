@@ -9,25 +9,25 @@
 > [ss]: https://specifications.freedesktop.org/secret-service/latest/
 
 ```bash
-secretsmith set MY_KEY                 # store into the Default keyring
-secretsmith get MY_KEY                 # read (secrets print by default)
-secretsmith get MY_KEY --redact        # mask for share/screenshot surfaces
-secretsmith env --app myapp            # export app-scoped env block
-secretsmith exec -- cmd args...        # run with secrets injected
-secretsmith tau-auth-sync              # mirror tau auth state
+kryptos set MY_KEY                 # store into the Default keyring
+kryptos get MY_KEY                 # read (secrets print by default)
+kryptos get MY_KEY --redact        # mask for share/screenshot surfaces
+kryptos env --app myapp            # export app-scoped env block
+kryptos exec -- cmd args...        # run with secrets injected
+kryptos tau-auth-sync              # mirror tau auth state
 ```
 
 > Full agent-facing usage, failure shapes, and the 2026-11-02 default-flip
-> rationale: [`estate/docs/secretsmith-guide.md`](../../../estate/docs/secretsmith-guide.md)
+> rationale: [`estate/docs/kryptos-guide.md`](../../../estate/docs/kryptos-guide.md)
 
 ## What's inside
 
 | Component | What it does |
 |---|---|
-| `secretsmith.ts` | The Secret Service CLI — D-Bus native via `dbus-next`; schema registry, JSON scripting mode, Chromium `os_crypt` pipeline that can never print the raw key |
+| `kryptos.ts` | The Secret Service CLI — D-Bus native via `dbus-next`; schema registry, JSON scripting mode, Chromium `os_crypt` pipeline that can never print the raw key |
 | `keypool/` | Provider key-pool router (Bun.serve, :25109): races keys per pool, parks 401s with cooldowns, gap-fills secrets from the keyring SSOT, health probes via event-driven poller |
 | `schemas.json` | Schema registry for structured secrets |
-| `bin/secretsmith` | Launcher (bin contract: `~/.local/bin/secretsmith → here`) |
+| `bin/kryptos` | Launcher (bin contract: `~/.local/bin/kryptos → here`) |
 
 ## Keypool pools
 
@@ -55,7 +55,7 @@ MIT — see [LICENSE](LICENSE).
 
 ## Secrets SSOT layout
 
-- **Keyring** (D-Bus Secret Service, `Default Keyring`) = the SSOT. `secretsmith env --app <name>` injects an app's keys (matches `service` attribute OR `<APP>_*` label prefix — anomaly #16 contract).
-- **keypool** keys are stamped `service=keypool` (12 items: OPENROUTER_*, GEMINI_EAP_KEY*, FREEINFERENCE_API_KEY, MISTRAL_API_KEY) — stanza runs `eval $(secretsmith env --app keypool)`.
+- **Keyring** (D-Bus Secret Service, `Default Keyring`) = the SSOT. `kryptos env --app <name>` injects an app's keys (matches `service` attribute OR `<APP>_*` label prefix — anomaly #16 contract).
+- **keypool** keys are stamped `service=keypool` (12 items: OPENROUTER_*, GEMINI_EAP_KEY*, FREEINFERENCE_API_KEY, MISTRAL_API_KEY) — stanza runs `eval $(kryptos env --app keypool)`.
 - **Recovery vault** `/home/toxic/estate-secrets-recovery/` = post-archive cherry-pick of irreplaceable keys (CA, phone, PGP, graveyard). Not tracked in git (push-protection enforced 2026-10-28).
 - **`~/.secrets`** = retired fallback record; keyring gap-fill overrides it (loadSecrets: env → file → keyring).

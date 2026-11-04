@@ -14,7 +14,7 @@ Auto-backfilled from git history 2026-11-02 (real commits only).
 - chore(eidos): apply bun-scaffold bunfig + infra drop-in env (qdrant/hindsight/kafka/redis) — eidos is the pare (01443d6)
 
 ## 2026-10-29
-- secretsmith: get LABEL positional support (anomaly #61) — bare positional was silently dropped, search({}) mat (7a9a6cc)
+- kryptos: get LABEL positional support (anomaly #61) — bare positional was silently dropped, search({}) mat (7a9a6cc)
 - feat(keypool): cache-first kernel secrets preload (env-preload) (bb2c8c6)
 
 ## 2026-10-28
@@ -27,10 +27,10 @@ Auto-backfilled from git history 2026-11-02 (real commits only).
 - docs+chore: star-ready README (features table, keypool pools, mastership lineage) + canonical moon.yml/package (f6e7ef7)
 - fix(keypool): loadSecrets merge order — file record is local override (TDD quotes.test green 41/41); keyring g (e19f114)
 - feat(keypool): ingest runtime health state; canonical key-pool router (keygate retired) (f67e784)
-- feat: consolidate secretsmith into kryptos master — cherry-pick label-scoped --replace + exec/env + alias-map  (f1224d1)
+- feat: consolidate kryptos into kryptos master — cherry-pick label-scoped --replace + exec/env + alias-map  (f1224d1)
 
 ## 2026-10-26
-- fix(keypool): strip shell quotes from secretsmith env imports (TDD) (cdfb2d5)
+- fix(keypool): strip shell quotes from kryptos env imports (TDD) (cdfb2d5)
 - fix(keypool): keyring-SSOT secret loading + strict TS7 typing + README SSOT doc (11c3f37)
 
 ## 2026-10-24

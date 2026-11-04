@@ -11,12 +11,12 @@ function withFile(content: string): () => string {
   return () => p;
 }
 
-describe("loadSecrets secretsmith env contract", () => {
-  test("strips single-quoted export values from `secretsmith env` output", () => {
+describe("loadSecrets kryptos env contract", () => {
+  test("strips single-quoted export values from `kryptos env` output", () => {
     const f = withFile(
       `export OPENROUTER_API_KEY='sk-or-clean-key'\nexport NIM_API_KEY_1='nvapi-clean'\n`,
     );
-    // secretsmith env emits shell exports: KEY='value' — the stored secret
+    // kryptos env emits shell exports: KEY='value' — the stored secret
     // must NOT carry the literal quotes, else Bearer headers become
     // `sk-...'` and every upstream 401s (the 2026-10-26 mass-down).
     const m = loadSecrets(f());

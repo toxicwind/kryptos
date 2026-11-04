@@ -7,7 +7,7 @@
   "version": "1.0.0",
   "description": "The maximal freedesktop Secret Service CLI + keypool — secrets SSOT (kryptos = hidden)",
   "bin": {
-    "secretsmith": "bin/secretsmith"
+    "kryptos": "bin/kryptos"
   },
   "type": "module",
   "dependencies": {

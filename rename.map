@@ -1,0 +1,122 @@
+[
+  {
+    "from": "secretsmith",
+    "to": "kryptos",
+    "file": "CHANGELOG.md"
+  },
+  {
+    "from": "secretsmith",
+    "to": "kryptos",
+    "file": "README.md"
+  },
+  {
+    "from": "secretsmith",
+    "to": "kryptos",
+    "file": "bin/secretsmith"
+  },
+  {
+    "from": "secretsmith",
+    "to": "kryptos",
+    "file": "compat-chromium-keyring.sh"
+  },
+  {
+    "from": "secretsmith",
+    "to": "kryptos",
+    "file": "keypool/src/config.ts"
+  },
+  {
+    "from": "secretsmith",
+    "to": "kryptos",
+    "file": "keypool/test/quotes.test.ts"
+  },
+  {
+    "from": "secretsmith",
+    "to": "kryptos",
+    "file": "kryptos-kernel-preload.ts"
+  },
+  {
+    "from": "secretsmith",
+    "to": "kryptos",
+    "file": "moon.yml"
+  },
+  {
+    "from": "secretsmith",
+    "to": "kryptos",
+    "file": "package.json"
+  },
+  {
+    "from": "secretsmith",
+    "to": "kryptos",
+    "file": "schemas.json"
+  },
+  {
+    "from": "secretsmith",
+    "to": "kryptos",
+    "file": "secretsmith.py"
+  },
+  {
+    "from": "secretsmith",
+    "to": "kryptos",
+    "file": "secretsmith.py"
+  },
+  {
+    "from": "secretsmith",
+    "to": "kryptos",
+    "file": "secretsmith.ts"
+  },
+  {
+    "from": "secretsmith",
+    "to": "kryptos",
+    "file": "secretsmith.ts"
+  },
+  {
+    "from": "secretsmith",
+    "to": "kryptos",
+    "file": "skills/cyoa-router/SKILL.md"
+  },
+  {
+    "from": "secretsmith",
+    "to": "kryptos",
+    "file": "tests/delete-positional.test.ts"
+  },
+  {
+    "from": "secretsmith",
+    "to": "kryptos",
+    "file": "tests/get-positional.test.ts"
+  },
+  {
+    "from": "secretsmith",
+    "to": "kryptos",
+    "file": "tests/secretsmith.test.ts"
+  },
+  {
+    "from": "secretsmith",
+    "to": "kryptos",
+    "file": "tests/secretsmith.test.ts"
+  },
+  {
+    "from": "secretsmith",
+    "to": "kryptos",
+    "file": "tests/test_fuzzy_get.py"
+  },
+  {
+    "from": "secretsmith",
+    "to": "kryptos",
+    "file": "tests/test_secretsmith.py"
+  },
+  {
+    "from": "secretsmith",
+    "to": "kryptos",
+    "file": "tests/test_secretsmith.py"
+  },
+  {
+    "from": "secretsmith",
+    "to": "kryptos",
+    "file": "tests/test_secretsmith_integrations.ts"
+  },
+  {
+    "from": "secretsmith",
+    "to": "kryptos",
+    "file": "tests/test_secretsmith_integrations.ts"
+  }
+]

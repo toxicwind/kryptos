@@ -155,7 +155,7 @@ export function parseSimpleYaml(text: string): Record<string, unknown> {
 }
 
 /** Parse one `KEY=VALUE` line (optionally `export KEY='VALUE'`). Strips ONE
- * matching pair of surrounding quotes from the value — secretsmith env emits
+ * matching pair of surrounding quotes from the value — kryptos env emits
  * shell-quoted exports, and storing the literal quotes corrupts every Bearer
  * header downstream (the 2026-10-26 mass-down: valid keys 401'd as
  * "Missing Authentication header" because the stored value was `sk-...'`). */
@@ -181,7 +181,7 @@ export function parseEnvLine(line: string): [string, string] | undefined {
  *
  * Merge order: ambient process.env first, then an explicit secrets file record
  * (the local override — its quote-stripping must be observable, see
- * test/quotes.test.ts), then a keyring gap-fill via `secretsmith env` for
+ * test/quotes.test.ts), then a keyring gap-fill via `kryptos env` for
  * key-shaped names the file+env don't already define. Production post-cutover
  * has no secrets file (warn path), so this ordering is prod-neutral.
  */
@@ -192,7 +192,7 @@ export function loadSecrets(path: string): Map<string, string> {
   }
   if (!existsSync(path)) {
     // ~/.secrets was the pre-keyring fallback record (AGENTS rule 3) and is
-    // gone after the keyring cutover; the secretsmith-injected process env is
+    // gone after the keyring cutover; the kryptos-injected process env is
     // the SSOT now, so a missing file is a warn, not a fatal boot failure.
     console.warn(
       `[keypool] secrets file not found: ${path}; falling back to process env (keyring SSOT)`,
@@ -205,12 +205,12 @@ export function loadSecrets(path: string): Map<string, string> {
   }
   // The pitchfork-managed daemon has NO keyring env in its [env] block
   // (secrets are in the keyring SSOT). Make the daemon self-sufficient:
-  // shell out to `secretsmith env` once and import its exports, so every
+  // shell out to `kryptos env` once and import its exports, so every
   // pool (GEMINI_EAP_KEY_*, NIM_*, ...) resolves without a wrapper in the
   // supervisor. Gap-fill only — never overrides file/env values.
   // Never logs the values.
   try {
-    const proc = Bun.spawnSync(["secretsmith", "env"], {
+    const proc = Bun.spawnSync(["kryptos", "env"], {
       stdout: "pipe",
       stderr: "ignore",
     });

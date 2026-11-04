@@ -1,19 +1,19 @@
 // Eval-kernel secrets preload — WINNER: technique B (in-process D-Bus via
 // python3 secretstorage). Loads ALL keyring items into process.env ONCE at
-// kernel boot; zero per-command transport afterwards (no secretsmith spawns).
+// kernel boot; zero per-command transport afterwards (no kryptos spawns).
 //
 // Race results (2026-10-29):
-//   A) subprocess `secretsmith search '' --json --show` : 295ms dump, but
+//   A) subprocess `kryptos search '' --json --show` : 295ms dump, but
 //      secret_preview is MASKED — full secrets need per-label gets = N
 //      subprocess spawns per read. Loses on transport count.
-//   C) `secretsmith env --app <app>` : BROKEN (0 vars) — anomaly #19 emitter-skip.
+//   C) `kryptos env --app <app>` : BROKEN (0 vars) — anomaly #19 emitter-skip.
 //   B) in-process D-Bus (secretstorage) : 173 items in 1.65s, FULL secrets,
 //      ZERO per-command transport. WINNER.
 //
-// Gotcha found: `secretsmith get THRESHER_API_KEY --show` returns junk
+// Gotcha found: `kryptos get THRESHER_API_KEY --show` returns junk
 // ("label:" YAML blob, 221 chars) while the D-Bus item is correct (64 chars) —
-// same item, two truths. D-Bus is ground truth; secretsmith's read path is
-// the buggy half (anomaly #19 class). Never trust secretsmith -show for
+// same item, two truths. D-Bus is ground truth; kryptos's read path is
+// the buggy half (anomaly #19 class). Never trust kryptos -show for
 // verification; read via D-Bus.
 //
 // Usage: %load <this file> at kernel start (or run once; state persists

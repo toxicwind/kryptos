@@ -8,8 +8,8 @@ import {
   parseAttrs,
 
   resolveSchema,
-  SecretsmithError,
-} from "../secretsmith.ts";
+  KryptosError,
+} from "../kryptos.ts";
 
 const pad16 = (pt: Buffer) =>
   Buffer.concat([
@@ -27,21 +27,21 @@ function makeV10Blob(key: Buffer, plaintext: Buffer): Buffer {
   ]);
 }
 
-describe("Secretsmith CLI & Integrations", () => {
-  test("secretsmith collections lists available collections", () => {
-    const out = execSync("secretsmith collections", { encoding: "utf8" });
+describe("Kryptos CLI & Integrations", () => {
+  test("kryptos collections lists available collections", () => {
+    const out = execSync("kryptos collections", { encoding: "utf8" });
     expect(out).toContain("/org/freedesktop/secrets/collection");
   });
 
-  test("secretsmith bw-status reports bitwarden status", () => {
-    const out = execSync("secretsmith --json bw-status", { encoding: "utf8" });
+  test("kryptos bw-status reports bitwarden status", () => {
+    const out = execSync("kryptos --json bw-status", { encoding: "utf8" });
     const data = JSON.parse(out);
     expect(data).toHaveProperty("status");
     expect(typeof data.status).toBe("string");
   });
 
-  test("secretsmith cookie-vault sync executes and reports stored cookies", () => {
-    const out = execSync("secretsmith cookie-vault status", {
+  test("kryptos cookie-vault sync executes and reports stored cookies", () => {
+    const out = execSync("kryptos cookie-vault status", {
       encoding: "utf8",
     });
     expect(out).toContain("cookies");
@@ -51,7 +51,7 @@ describe("Secretsmith CLI & Integrations", () => {
     let exit = 0;
     let stderr = "";
     try {
-      execSync("secretsmith tau-auth-sync --db-path /nonexistent/agent.db", {
+      execSync("kryptos tau-auth-sync --db-path /nonexistent/agent.db", {
         encoding: "utf8",
         stdio: ["ignore", "ignore", "pipe"],
       });
@@ -97,24 +97,24 @@ describe("Secretsmith CLI & Integrations", () => {
     const blob = makeV10Blob(key, Buffer.from("nope"));
     const wrongKey = Buffer.from(crypto.getRandomValues(new Uint8Array(16)));
     expect(() => decryptChromiumBlob(blob, [wrongKey])).toThrow(
-      SecretsmithError,
+      KryptosError,
     );
     expect(() =>
       decryptChromiumBlob(
         Buffer.concat([Buffer.from("v99"), Buffer.alloc(32)]),
         [wrongKey],
       ),
-    ).toThrow(SecretsmithError);
+    ).toThrow(KryptosError);
   });
 
   test("parse attrs", () => {
     expect(parseAttrs(["a=1", "b=x=y"])).toEqual({ a: "1", b: "x=y" });
-    expect(() => parseAttrs(["bare"])).toThrow(SecretsmithError);
+    expect(() => parseAttrs(["bare"])).toThrow(KryptosError);
   });
 
   test("redact is removed: --redact fails loudly", () => {
     const res = Bun.spawnSync({
-      cmd: ["bun", "secretsmith.ts", "--redact", "get", "--label", "nonexistent-xyz"],
+      cmd: ["bun", "kryptos.ts", "--redact", "get", "--label", "nonexistent-xyz"],
       cwd: import.meta.dir + "/..",
     });
     expect(res.exitCode).not.toBe(0);
@@ -123,13 +123,13 @@ describe("Secretsmith CLI & Integrations", () => {
   });
 });
 
-describe("Secretsmith live keyring (SSM_TEST_KEYRING=1)", () => {
+describe("Kryptos live keyring (SSM_TEST_KEYRING=1)", () => {
   test("fuzzy get resolves canonical labels", () => {
     if (process.env.SSM_TEST_KEYRING !== "1") {
       console.log("skip: set SSM_TEST_KEYRING=1 to run live keyring tests");
       return;
     }
-    const out = execSync("secretsmith get --label openrouter --show --json", {
+    const out = execSync("kryptos get --label openrouter --show --json", {
       encoding: "utf8",
     });
     const data = JSON.parse(out);

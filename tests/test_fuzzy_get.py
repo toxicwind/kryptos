@@ -6,7 +6,7 @@ import subprocess
 
 def run(*args):
     return subprocess.run(
-        ["secretsmith", *args], capture_output=True, text=True, timeout=60
+        ["kryptos", *args], capture_output=True, text=True, timeout=60
     )
 
 

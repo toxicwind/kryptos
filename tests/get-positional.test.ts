@@ -1,12 +1,12 @@
-// TDD: `secretsmith get <POSITIONAL_LABEL>` must resolve the positional as a
+// TDD: `kryptos get <POSITIONAL_LABEL>` must resolve the positional as a
 // label — not silently drop it and return an arbitrary first item.
-// Live bug: `secretsmith get GITHUB_SESSIONS --json` returned
+// Live bug: `kryptos get GITHUB_SESSIONS --json` returned
 // MOONBOX_CHAOS_API_KEY (arbitrary first keyring item) because `case "get"`
 // parsed no positional.
 import { describe, test, expect } from "bun:test";
-import { parse } from "../secretsmith.ts";
+import { parse } from "../kryptos.ts";
 
-describe("secretsmith get positional label", () => {
+describe("kryptos get positional label", () => {
 	test("get with bare positional sets label", () => {
 		const a = parse(["get", "GITHUB_SESSIONS"]);
 		expect(a.label).toBe("GITHUB_SESSIONS");
@@ -36,7 +36,7 @@ describe("secretsmith get positional label", () => {
 	test("get with missing label errors — never returns an arbitrary item (anomaly 63)", async () => {
 		const missing = "MISSING_LABEL_" + Date.now();
 		// Live CLI contract, not parse-shape: a nonexistent label MUST error.
-		const proc = Bun.spawn(["bun", "secretsmith.ts", "get", missing], {
+		const proc = Bun.spawn(["bun", "kryptos.ts", "get", missing], {
 			cwd: import.meta.dir + "/..",
 			stdout: "pipe",
 			stderr: "pipe",
@@ -53,7 +53,7 @@ describe("secretsmith get positional label", () => {
 
 	test("get label-echo: returned item echoes the EXACT requested label", async () => {
 		// The label is the key contract — a fuzzy/wrong fetch is the defect.
-		const proc = Bun.spawn(["bun", "secretsmith.ts", "get", "GITHUB_TOKEN"], {
+		const proc = Bun.spawn(["bun", "kryptos.ts", "get", "GITHUB_TOKEN"], {
 			cwd: import.meta.dir + "/..",
 			stdout: "pipe",
 			stderr: "pipe",

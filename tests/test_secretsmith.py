@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""secretsmith tests: unit tests always run; keyring integration runs live
+"""kryptos tests: unit tests always run; keyring integration runs live
 when SSM_TEST_KEYRING=1 (uses a throwaway collection, cleans up after itself)."""
 
 import base64
@@ -12,7 +12,7 @@ import unittest
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, ".."))
 
-import secretsmith as ssm
+import kryptos as ssm
 
 
 class TestRegistry(unittest.TestCase):
@@ -67,11 +67,11 @@ class TestChromiumCrypto(unittest.TestCase):
 
     def test_wrong_key_fails(self):
         blob = self._blob(os.urandom(16), b"nope")
-        with self.assertRaises(ssm.SecretsmithError):
+        with self.assertRaises(ssm.KryptosError):
             ssm.decrypt_chromium_blob(blob, [os.urandom(16)])
 
     def test_bad_prefix_fails(self):
-        with self.assertRaises(ssm.SecretsmithError):
+        with self.assertRaises(ssm.KryptosError):
             ssm.decrypt_chromium_blob(b"v99" + b"x" * 32, [os.urandom(16)])
 
 
@@ -83,7 +83,7 @@ class TestSafety(unittest.TestCase):
         self.assertEqual(ssm.parse_attrs(["a=1", "b=x=y"]), {"a": "1", "b": "x=y"})
 
     def test_parse_attrs_rejects_bare(self):
-        with self.assertRaises(ssm.SecretsmithError):
+        with self.assertRaises(ssm.KryptosError):
             ssm.parse_attrs(["bare"])
 
 
@@ -112,7 +112,7 @@ class _FakeSvc:
         for it in self._items:
             if it["path"] == item_path:
                 return it["_secret"], "text/plain"
-        raise ssm.SecretsmithError("no such item")
+        raise ssm.KryptosError("no such item")
 
 
 def _fake_item(label, secret, attrs=None):
@@ -222,7 +222,7 @@ class TestProtectedSchema(unittest.TestCase):
     def test_refuse_protected(self):
         reg = ssm.load_registry()
         item = {"attributes": {"xdg:schema": "chrome_libsecret_os_crypt_password_v2"}}
-        with self.assertRaises(ssm.SecretsmithError) as ctx:
+        with self.assertRaises(ssm.KryptosError) as ctx:
             ssm._refuse_protected(item, reg)
         self.assertIn("os_crypt key material", str(ctx.exception))
 
@@ -352,7 +352,7 @@ class TestKeyringIntegration(unittest.TestCase):
         cls.test_id = "ssm-test-%d" % os.getpid()
 
     def test_set_get_search_delete(self):
-        p = self.svc.set_item(self.coll, "secretsmith test item",
+        p = self.svc.set_item(self.coll, "kryptos test item",
                               {"xdg:schema": "org.freedesktop.Secret.Generic",
                                "test-id": self.test_id},
                               b"s3cr3t-value", replace=True)
@@ -360,7 +360,7 @@ class TestKeyringIntegration(unittest.TestCase):
         try:
             found = self.svc.search({"test-id": self.test_id})
             self.assertEqual(len(found), 1)
-            self.assertEqual(found[0]["label"], "secretsmith test item")
+            self.assertEqual(found[0]["label"], "kryptos test item")
             secret, _ct = self.svc.get_secret(found[0]["path"])
             self.assertEqual(secret, b"s3cr3t-value")
         finally:
@@ -376,7 +376,7 @@ class TestKeyringIntegration(unittest.TestCase):
     def test_collection_create_delete(self):
         if os.environ.get("SSM_TEST_COLLECTIONS") != "1":
             raise unittest.SkipTest("needs GUI keyring password prompt")
-        name = "secretsmith-test-%d" % os.getpid()
+        name = "kryptos-test-%d" % os.getpid()
         path = self.svc.create_collection(name)
         self.assertTrue(path.startswith("/"))
         self.svc.delete_collection(name)

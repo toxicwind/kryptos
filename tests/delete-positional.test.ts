@@ -1,8 +1,8 @@
-// TDD: `secretsmith delete <POSITIONAL_LABEL>` must resolve the positional as
+// TDD: `kryptos delete <POSITIONAL_LABEL>` must resolve the positional as
 // a label — not silently drop it and fall back to filters-only matching.
 //
 // Live bug (2026-11-03 ring wipe): the positional-label block lived only in
-// the `get` case, so `secretsmith delete _SMOKE --yes` ran with
+// the `get` case, so `kryptos delete _SMOKE --yes` ran with
 // a.label === undefined; cmdDelete's svc.search(filters, collection, null)
 // then matched EVERY item and wiped the whole ring (209 items).
 // Second anomaly the same day: `delete --attr app=x --yes` with the
@@ -13,9 +13,9 @@
 // 2. cmdDelete refuses to run with NEITHER label NOR attr filters — a
 //    filters-only match-all delete is structurally forbidden.
 import { describe, test, expect } from "bun:test";
-import { parse } from "../secretsmith.ts";
+import { parse } from "../kryptos.ts";
 
-describe("secretsmith delete positional label (ring-wipe regression)", () => {
+describe("kryptos delete positional label (ring-wipe regression)", () => {
 	test("delete with bare positional sets label", () => {
 		const a = parse(["delete", "SOME_LABEL"]);
 		expect(a.label).toBe("SOME_LABEL");

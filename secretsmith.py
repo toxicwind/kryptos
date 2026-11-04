@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-secretsmith — maximal freedesktop Secret Service CLI for the estate.
+kryptos — maximal freedesktop Secret Service CLI for the estate.
 
 Fork lineage: GNOME/libsecret (secret-tool), forked to toxicwind/libsecret.
 This tool reimplements and maximalizes secret-tool's D-Bus semantics in Python
@@ -53,7 +53,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 REGISTRY_PATH = os.path.join(HERE, "schemas.json")
 
 
-class SecretsmithError(RuntimeError):
+class KryptosError(RuntimeError):
     pass
 
 
@@ -62,7 +62,7 @@ def load_registry():
         with open(REGISTRY_PATH, encoding="utf-8") as f:
             return json.load(f)
     except (OSError, ValueError) as e:
-        raise SecretsmithError(
+        raise KryptosError(
             "cannot load schema registry %s: %s" % (REGISTRY_PATH, e)
         )
 
@@ -99,7 +99,7 @@ def protected_schemas(registry):
 def _refuse_protected(item, registry):
     schema = (item.get("attributes") or {}).get("xdg:schema", "")
     if schema in protected_schemas(registry):
-        raise SecretsmithError(
+        raise KryptosError(
             "refusing to display secret for schema %r: os_crypt key material "
             "is never printed (check/attrs report metadata only)" % schema
         )
@@ -112,10 +112,10 @@ def redact(nbytes):
 class SecretService:
     def __init__(self, bus=None):
         if dbus is None:
-            raise SecretsmithError("dbus-python is required on this machine")
+            raise KryptosError("dbus-python is required on this machine")
         self.bus = bus or dbus.SessionBus()
         if not self.bus.name_has_owner(BUS_NAME):
-            raise SecretsmithError(
+            raise KryptosError(
                 "no %s on the session bus (is a Secret Service daemon running? "
                 "bus=%s)"
                 % (BUS_NAME, os.environ.get("DBUS_SESSION_BUS_ADDRESS", "(default)"))
@@ -161,14 +161,14 @@ class SecretService:
         if target == "default":
             p = self.default_collection()
             if not p:
-                raise SecretsmithError("no default collection alias set")
+                raise KryptosError("no default collection alias set")
             return p
         if target.startswith("/"):
             return target
         for c in self.collections():
             if c["label"] == target:
                 return c["path"]
-        raise SecretsmithError("no such collection: %r" % target)
+        raise KryptosError("no such collection: %r" % target)
 
     def create_collection(self, label, alias=""):
         props = {"org.freedesktop.Secret.Collection.Label": label}
@@ -248,7 +248,7 @@ class SecretService:
             if not any(states):
                 return
             time.sleep(0.5)
-        raise SecretsmithError(
+        raise KryptosError(
             "unlock did not complete (keyring may need a GUI unlock)"
         )
 
@@ -350,10 +350,10 @@ def _key_candidates(raw):
 
 def decrypt_chromium_blob(blob, key_candidates):
     if not _HAVE_CRYPTO:
-        raise SecretsmithError("cryptography package required for decryption")
+        raise KryptosError("cryptography package required for decryption")
     blob = bytes(blob)
     if blob[:3] not in (b"v10", b"v11"):
-        raise SecretsmithError(
+        raise KryptosError(
             "unsupported blob prefix %r (expected v10/v11)" % blob[:3]
         )
     ct = blob[3:]
@@ -366,7 +366,7 @@ def decrypt_chromium_blob(blob, key_candidates):
         pad = pt[-1]
         if 1 <= pad <= 16 and pt.endswith(bytes([pad]) * pad):
             return pt[:-pad]
-    raise SecretsmithError(
+    raise KryptosError(
         "decryption failed with all %d key candidates" % len(key_candidates)
     )
 
@@ -375,7 +375,7 @@ def chromium_key_bytes(svc, registry):
     schema, _entry = resolve_schema("chromium", registry)
     found = svc.search({"xdg:schema": schema})
     if not found:
-        raise SecretsmithError("no Chromium Safe Storage entry (schema %s)" % schema)
+        raise KryptosError("no Chromium Safe Storage entry (schema %s)" % schema)
     svc.ensure_unlocked_items(found)
     secret, _ct = svc.get_secret(found[0]["path"])
     return secret, found[0]
@@ -384,8 +384,8 @@ def chromium_key_bytes(svc, registry):
 def _copy_profile_db(profile_dir, name):
     src = os.path.join(profile_dir, name)
     if not os.path.exists(src):
-        raise SecretsmithError("profile db not found: %s" % src)
-    tmp = tempfile.mkdtemp(prefix="secretsmith-")
+        raise KryptosError("profile db not found: %s" % src)
+    tmp = tempfile.mkdtemp(prefix="kryptos-")
     dst = os.path.join(tmp, name)
     shutil.copy2(src, dst)
     for suffix in ("-wal", "-shm"):
@@ -401,7 +401,7 @@ def _to_bytes(v):
         return bytes(v)
     if isinstance(v, str):
         return v.encode("utf-8")  # best effort; sqlite TEXT affinity
-    raise SecretsmithError("cannot coerce %r to bytes" % type(v))
+    raise KryptosError("cannot coerce %r to bytes" % type(v))
 
 
 def _to_text(v):
@@ -420,7 +420,7 @@ def chromium_logins(svc, registry, profile_dir):
     key, _info = chromium_key_bytes(svc, registry)
     cands = _key_candidates(key)
     if not cands:
-        raise SecretsmithError(
+        raise KryptosError(
             "no usable AES key candidate from keyring secret (%d bytes)" % len(key)
         )
     db_path, tmpdir = _copy_profile_db(profile_dir, "Login Data")
@@ -439,7 +439,7 @@ def chromium_logins(svc, registry, profile_dir):
                 "utf-8", "replace"
             )
             ok = True
-        except SecretsmithError:
+        except KryptosError:
             pw, ok = None, False
         out.append(
             {
@@ -456,7 +456,7 @@ def chromium_cookies(svc, registry, profile_dir):
     key, _info = chromium_key_bytes(svc, registry)
     cands = _key_candidates(key)
     if not cands:
-        raise SecretsmithError(
+        raise KryptosError(
             "no usable AES key candidate from keyring secret (%d bytes)" % len(key)
         )
     db_path, tmpdir = _copy_profile_db(profile_dir, "Cookies")
@@ -489,7 +489,7 @@ def chromium_cookies(svc, registry, profile_dir):
                 "utf-8", "replace"
             )
             ok = True
-        except SecretsmithError:
+        except KryptosError:
             dec, ok = None, False
         out.append(
             {
@@ -508,13 +508,13 @@ def chromium_cookies(svc, registry, profile_dir):
 
 
 def _load_alias_map(config_dir=None):
-    """Load alias map from ~/.config/secretsmith/aliases.toml (or TOML/json).
+    """Load alias map from ~/.config/kryptos/aliases.toml (or TOML/json).
 
     Format: [aliases]  GH_TOKEN = "GITHUB_TOKEN"  etc.
     Returns dict {alias_name: canonical_label}.
     """
     if config_dir is None:
-        config_dir = os.path.join(os.path.expanduser("~"), ".config", "secretsmith")
+        config_dir = os.path.join(os.path.expanduser("~"), ".config", "kryptos")
     for fname in ("aliases.toml", "aliases.json"):
         fpath = os.path.join(config_dir, fname)
         if not os.path.exists(fpath):
@@ -590,7 +590,7 @@ def parse_attrs(pairs):
     attrs = {}
     for p in pairs or []:
         if "=" not in p:
-            raise SecretsmithError("attribute must be k=v, got %r" % p)
+            raise KryptosError("attribute must be k=v, got %r" % p)
         k, v = p.split("=", 1)
         attrs[k] = v
     return attrs
@@ -637,7 +637,7 @@ def _fuzzy_find(svc, label, collection=None):
         return []
     try:
         items = svc.search({}, collection=collection)
-    except SecretsmithError:
+    except KryptosError:
         return []
     exact, prefix, substring = [], [], []
     for it in items:
@@ -743,7 +743,7 @@ def cmd_get(svc, a, registry, as_json):
             if all(n.startswith(base) for n, _ in norm[1:]):
                 found = [norm[0][1]]
         if len(found) > 1:
-            raise SecretsmithError(
+            raise KryptosError(
                 "%d fuzzy matches for %r: %s — refine with --label or --no-fuzzy"
                 % (
                     len(found),
@@ -752,9 +752,9 @@ def cmd_get(svc, a, registry, as_json):
                 )
             )
     if not found:
-        raise SecretsmithError("no item matches %r" % filters)
+        raise KryptosError("no item matches %r" % filters)
     if len(found) > 1:
-        raise SecretsmithError(
+        raise KryptosError(
             "%d items match %r — refine attributes" % (len(found), filters)
         )
     it = found[0]
@@ -808,7 +808,7 @@ def read_secret_input(a):
     if data.endswith(b"\n"):
         data = data[:-1]  # strip one trailing newline (echo convention)
     if not data:
-        raise SecretsmithError("empty secret — refusing to store nothing")
+        raise KryptosError("empty secret — refusing to store nothing")
     return data
 
 
@@ -819,7 +819,7 @@ def cmd_set(svc, a, registry, as_json):
     if collection == "default" and not svc.default_collection():
         colls = svc.collections()
         if not colls:
-            raise SecretsmithError("no collections exist — create one first")
+            raise KryptosError("no collections exist — create one first")
         collection = colls[0]["label"]
     # `--replace` means "replace by LABEL", not "replace by identical attributes".
     # libsecret's CreateItem(replace=True) only overwrites an item whose
@@ -849,7 +849,7 @@ def cmd_delete(svc, a, registry, as_json):
         filters, collection=a.collection, label=getattr(a, "label", None)
     )
     if not found:
-        raise SecretsmithError("no item matches %r" % filters)
+        raise KryptosError("no item matches %r" % filters)
     if not a.yes:
         print("would delete %d item(s):" % len(found))
         for it in found:
@@ -918,12 +918,12 @@ def _resolve_targets(svc, targets, kind):
             try:
                 paths.append(svc.resolve_collection(t))
                 continue
-            except SecretsmithError:
+            except KryptosError:
                 pass
         if t.startswith("/"):
             paths.append(t)
         else:
-            raise SecretsmithError("cannot resolve %r as collection or path" % t)
+            raise KryptosError("cannot resolve %r as collection or path" % t)
     return paths
 
 
@@ -989,7 +989,7 @@ def cmd_check(svc, a, registry, as_json):
             secret, _ct = svc.get_secret(found[0]["path"])
             result["chromium_secret_bytes"] = len(secret)
             result["chromium_key_candidates"] = len(_key_candidates(secret))
-        except SecretsmithError as e:
+        except KryptosError as e:
             result["problems"].append("chromium secret unreadable: %s" % e)
     else:
         result["problems"].append("no Chromium Safe Storage entry")
@@ -1039,7 +1039,7 @@ def cmd_env(svc, a, registry, as_json):
     """Drop-in env loader with alias expansion support.
 
     If --env specs are given, resolves each VAR=k=v[,k2=v2...] against the keyring.
-    With --alias-map (default: ~/.config/secretsmith/aliases.toml), env names that
+    With --alias-map (default: ~/.config/kryptos/aliases.toml), env names that
     are aliases expand to their canonical label and are injected too.
     With --all (and no --env), exports every keyring item whose label is a valid
     shell identifier, expanded through the alias map.
@@ -1051,12 +1051,12 @@ def cmd_env(svc, a, registry, as_json):
         # --env mode: resolve explicit VAR=k=v specs
         for spec in a.env:
             if "=" not in spec:
-                raise SecretsmithError(
+                raise KryptosError(
                     "env spec must be VAR=k=v[,k2=v2...], got %r" % spec
                 )
             var, attrspec = spec.split("=", 1)
             if not var.isidentifier():
-                raise SecretsmithError(
+                raise KryptosError(
                     "env var name %r is not a valid identifier" % var
                 )
             canonical, is_alias = _resolve_alias(aliases, var)
@@ -1065,9 +1065,9 @@ def cmd_env(svc, a, registry, as_json):
                 filters, collection=getattr(a, "collection", None), label=canonical
             )
             if not found:
-                raise SecretsmithError("no item matches %r" % filters)
+                raise KryptosError("no item matches %r" % filters)
             if len(found) > 1:
-                raise SecretsmithError(
+                raise KryptosError(
                     "%d items match %r — refine attributes" % (len(found), filters)
                 )
             it = found[0]
@@ -1099,7 +1099,7 @@ def cmd_env(svc, a, registry, as_json):
                 continue  # skip alias labels
             try:
                 secret, _ct = svc.get_secret(it["path"])
-            except SecretsmithError:
+            except KryptosError:
                 continue
             try:
                 exports[label] = secret.decode("utf-8")
@@ -1128,7 +1128,7 @@ def cmd_env(svc, a, registry, as_json):
             label = it["label"]
             try:
                 secret, _ct = svc.get_secret(it["path"])
-            except SecretsmithError:
+            except KryptosError:
                 continue
             try:
                 exports[label] = secret.decode("utf-8")
@@ -1155,12 +1155,12 @@ def cmd_exec(svc, a, registry, as_json):
         # --env mode: resolve explicit VAR=k=v specs
         for spec in a.env:
             if "=" not in spec:
-                raise SecretsmithError(
+                raise KryptosError(
                     "env spec must be VAR=k=v[,k2=v2...], got %r" % spec
                 )
             var, attrspec = spec.split("=", 1)
             if not var.isidentifier():
-                raise SecretsmithError(
+                raise KryptosError(
                     "env var name %r is not a valid identifier" % var
                 )
             canonical, is_alias = _resolve_alias(aliases, var)
@@ -1169,9 +1169,9 @@ def cmd_exec(svc, a, registry, as_json):
                 filters, collection=getattr(a, "collection", None), label=canonical
             )
             if not found:
-                raise SecretsmithError("no item matches %r" % filters)
+                raise KryptosError("no item matches %r" % filters)
             if len(found) > 1:
-                raise SecretsmithError(
+                raise KryptosError(
                     "%d items match %r — refine attributes" % (len(found), filters)
                 )
             it = found[0]
@@ -1219,14 +1219,14 @@ def cmd_exec(svc, a, registry, as_json):
                 continue
             try:
                 secret, _ct = svc.get_secret(it["path"])
-            except SecretsmithError:
+            except KryptosError:
                 continue
             env[label] = secret.decode("utf-8", "replace")
             for alias_name, alias_canon in aliases.items():
                 if alias_canon == label and alias_name not in env:
                     env[alias_name] = secret.decode("utf-8", "replace")
     else:
-        raise SecretsmithError("specify --env VAR=k=v, --only NAME, or --all")
+        raise KryptosError("specify --env VAR=k=v, --only NAME, or --all")
 
     if getattr(a, "print_env_names", False):
         for name in sorted(env.keys()):
@@ -1238,7 +1238,7 @@ def cmd_exec(svc, a, registry, as_json):
     try:
         proc = subprocess.run(a.command, env=env)
     except FileNotFoundError as e:
-        raise SecretsmithError("cannot exec %r: %s" % (a.command[0], e))
+        raise KryptosError("cannot exec %r: %s" % (a.command[0], e))
     return proc.returncode
 
 
@@ -1377,7 +1377,7 @@ def cmd_bitwarden_get(svc, a, registry, as_json):
         err = str(e)
     items = svc.search({"name": a.id_or_name})
     if not items:
-        print("secretsmith: bitwarden/secrets error: %s" % err, file=sys.stderr)
+        print("kryptos: bitwarden/secrets error: %s" % err, file=sys.stderr)
         return 1
     sec = items[0].get_secret()
     val = sec.decode("utf-8", "replace") if sec else ""
@@ -1419,7 +1419,7 @@ def cmd_cookie_vault_sync(svc, a, registry, as_json):
             print(out)
         return res.returncode
     except Exception as e:
-        print("secretsmith: cookie-vault error: %s" % e, file=sys.stderr)
+        print("kryptos: cookie-vault error: %s" % e, file=sys.stderr)
         return 1
 
 
@@ -1427,7 +1427,7 @@ def cmd_tau_auth_sync(svc, a, registry, as_json):
     """Mirror tau's built-in auth_credentials table into the keyring.
 
     Reads ~/.tau/agent/agent.db (via getAgentDbPath symlink) and stores each
-    credential as a Secret Service item so secretsmith is the SSOT for the
+    credential as a Secret Service item so kryptos is the SSOT for the
     built-in auth store too. OAuth tokens and API keys share one schema:
       attr tau_credential = "1"
       attr provider       = <provider>
@@ -1439,7 +1439,7 @@ def cmd_tau_auth_sync(svc, a, registry, as_json):
         os.path.expanduser("~"), ".tau", "agent", "agent.db"
     )
     if not os.path.exists(DB_PATH):
-        raise SecretsmithError("tau agent.db not found at %s" % DB_PATH)
+        raise KryptosError("tau agent.db not found at %s" % DB_PATH)
     import sqlite3
 
     con = sqlite3.connect("file:%s?mode=ro" % DB_PATH, uri=True)
@@ -1449,7 +1449,7 @@ def cmd_tau_auth_sync(svc, a, registry, as_json):
     ).fetchall()
     con.close()
     if not rows:
-        print("secretsmith: no tau credentials to sync")
+        print("kryptos: no tau credentials to sync")
         return 0
 
     # Maximal autonomous workaround for a locked Default Keyring: pick the
@@ -1472,7 +1472,7 @@ def cmd_tau_auth_sync(svc, a, registry, as_json):
             if labeled:
                 return labeled["label"]
             return unlocked[0]["path"]
-        raise SecretsmithError(
+        raise KryptosError(
             "no unlocked Secret Service collection available (Default Keyring "
             "locked and no session collection). Unlock the keyring or run with "
             "--collection <label>."
@@ -1510,7 +1510,7 @@ def cmd_tau_auth_sync(svc, a, registry, as_json):
                 {"id": row_id, "provider": provider, "type": cred_type, "label": label}
             )
         except Exception as e:
-            raise SecretsmithError("failed to store %s: %s" % (label, e))
+            raise KryptosError("failed to store %s: %s" % (label, e))
     if as_json:
         print(
             json.dumps(
@@ -1537,7 +1537,7 @@ def cmd_tau_auth_sync(svc, a, registry, as_json):
 
 def build_parser():
     p = argparse.ArgumentParser(
-        prog="secretsmith", description="maximal freedesktop Secret Service CLI"
+        prog="kryptos", description="maximal freedesktop Secret Service CLI"
     )
     sub = p.add_subparsers(dest="cmd", required=True)
 
@@ -1696,7 +1696,7 @@ def build_parser():
     env_p.add_argument(
         "--alias-map",
         default="",
-        help="path to aliases.toml/json config dir (default: ~/.config/secretsmith)",
+        help="path to aliases.toml/json config dir (default: ~/.config/kryptos)",
     )
     env_p.set_defaults(func=cmd_env)
 
@@ -1726,7 +1726,7 @@ def build_parser():
     exec_p.add_argument(
         "--alias-map",
         default="",
-        help="path to aliases.toml/json config dir (default: ~/.config/secretsmith)",
+        help="path to aliases.toml/json config dir (default: ~/.config/kryptos)",
     )
     exec_p.add_argument(
         "--print-env-names",
@@ -1776,7 +1776,7 @@ def build_parser():
     )
     cv.set_defaults(func=cmd_cookie_vault_sync)
 
-    # tau built-in auth -> keyring mirror (secretsmith as SSOT for tau auth)
+    # tau built-in auth -> keyring mirror (kryptos as SSOT for tau auth)
     ta = sub.add_parser(
         "tau-auth-sync",
         parents=[common],
@@ -1810,13 +1810,13 @@ def main(argv=None):
         registry = load_registry()
         svc = SecretService()
         return a.func(svc, a, registry, a.json)
-    except SecretsmithError as e:
-        print("secretsmith: error: %s" % e, file=sys.stderr)
+    except KryptosError as e:
+        print("kryptos: error: %s" % e, file=sys.stderr)
         return 1
     except Exception as e:
         if dbus is not None and isinstance(e, dbus.DBusException):
             print(
-                "secretsmith: D-Bus error: %s" % e.get_dbus_message(), file=sys.stderr
+                "kryptos: D-Bus error: %s" % e.get_dbus_message(), file=sys.stderr
             )
             return 1
         raise

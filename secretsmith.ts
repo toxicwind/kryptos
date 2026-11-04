@@ -1,11 +1,11 @@
 #!/usr/bin/env bun
 /**
- * secretsmith — maximal freedesktop Secret Service CLI (Bun port).
- * Ported 1:1 from secretsmith.py; identical CLI contract so all tests hold.
+ * kryptos — maximal freedesktop Secret Service CLI (Bun port).
+ * Ported 1:1 from kryptos.py; identical CLI contract so all tests hold.
  * Drop-in surfaces:
- *   eval "$(secretsmith env)"            # shell env loader
- *   secretsmith exec --env K=attr=v cmd  # secrets injected, never printed
- *   secretsmith get --label X --show     # fuzzy-label fallback built in
+ *   eval "$(kryptos env)"            # shell env loader
+ *   kryptos exec --env K=attr=v cmd  # secrets injected, never printed
+ *   kryptos get --label X --show     # fuzzy-label fallback built in
  */
 import { spawnSync } from "node:child_process";
 import { createDecipheriv } from "node:crypto";
@@ -27,7 +27,7 @@ const IFACE_COLLECTION = "org.freedesktop.Secret.Collection";
 const IFACE_ITEM = "org.freedesktop.Secret.Item";
 const IFACE_PROPS = "org.freedesktop.DBus.Properties";
 
-export class SecretsmithError extends Error {}
+export class KryptosError extends Error {}
 
 // ---------- registry ----------
 interface SchemaEntry {
@@ -61,7 +61,7 @@ function protectedSchemas(reg: Record<string, SchemaEntry>): Set<string> {
 function refuseProtected(it: any, reg: Record<string, SchemaEntry>): void {
   const schema = it.attributes["xdg:schema"];
   if (schema && protectedSchemas(reg).has(schema))
-    throw new SecretsmithError(
+    throw new KryptosError(
       `item ${it.label} is protected by schema ${schema}; refusing`,
     );
 }
@@ -100,7 +100,7 @@ export class SecretService {
 
   private obj(path: string) {
     if (typeof path !== "string")
-      throw new SecretsmithError(
+      throw new KryptosError(
         `dbus object path must be a string, got ${typeof path}: ${String(path)}`,
       );
     return this.bus.getProxyObject(BUS_NAME, path);
@@ -166,13 +166,13 @@ export class SecretService {
   async resolveCollection(target: string): Promise<string> {
     if (target === "default") {
       const p = await this.defaultCollection();
-      if (!p) throw new SecretsmithError("no default collection alias set");
+      if (!p) throw new KryptosError("no default collection alias set");
       return p;
     }
     if (target.startsWith("/")) return target;
     for (const c of await this.collections())
       if (c.label === target) return c.path;
-    throw new SecretsmithError(`no such collection: ${JSON.stringify(target)}`);
+    throw new KryptosError(`no such collection: ${JSON.stringify(target)}`);
   }
 
   async createCollection(label: string, alias = ""): Promise<string> {
@@ -282,7 +282,7 @@ export class SecretService {
       if (!states.some(Boolean)) return;
       await Bun.sleep(500);
     }
-    throw new SecretsmithError(
+    throw new KryptosError(
       "unlock did not complete (keyring may need a GUI unlock)",
     );
   }
@@ -361,7 +361,7 @@ export function parseAttrs(pairs: string[]): Record<string, string> {
   for (const pair of pairs ?? []) {
     const i = pair.indexOf("=");
     if (i <= 0)
-      throw new SecretsmithError(
+      throw new KryptosError(
         `attr must be k=v, got ${JSON.stringify(pair)}`,
       );
     out[pair.slice(0, i)] = pair.slice(i + 1);
@@ -395,7 +395,7 @@ function loadTomlFile(fpath: string): Record<string, any> {
 }
 
 export function loadAliasMap(configDir?: string): Record<string, string> {
-  const dir = configDir || join(homedir(), ".config", "secretsmith");
+  const dir = configDir || join(homedir(), ".config", "kryptos");
   for (const cand of [join(dir, "aliases.toml"), join(dir, "aliases.json")]) {
     if (existsSync(cand)) {
       try {
@@ -535,7 +535,7 @@ async function cmdGet(
         found = [norm[0][1]];
     }
     if (found.length > 1)
-      throw new SecretsmithError(
+      throw new KryptosError(
         `${found.length} fuzzy matches for ${JSON.stringify(label)}: ${found
           .map((f) => f.label)
           .sort()
@@ -543,7 +543,7 @@ async function cmdGet(
       );
   }
   if (!found.length)
-    throw new SecretsmithError(`no item matches ${JSON.stringify(filters)}`);
+    throw new KryptosError(`no item matches ${JSON.stringify(filters)}`);
   const it = found[0];
   if (true) refuseProtected(it, registry);
   await svc.ensureUnlockedItems([it]);
@@ -584,7 +584,7 @@ async function cmdGet(
 
 function readSecretInput(a: any): Buffer {
   const raw = a.secret_file ? readFileSync(a.secret_file) : Buffer.from(readFileSync(0));
-  // Anomaly #84 seal: `echo s | secretsmith set` and heredocs append a
+  // Anomaly #84 seal: `echo s | kryptos set` and heredocs append a
   // trailing \n that then poisons HTTP-header consumers (gh: "invalid header
   // field value for Authorization") forever. Trim trailing CR/LF once, at the
   // only write boundary. Interior bytes are never touched.
@@ -625,12 +625,12 @@ async function cmdDelete(
   // Anomaly (2026-11-03 wipe): a delete with NEITHER label NOR attr filters
   // matches every item in the collection. Refuse instead of nuking the ring.
   if (a.label == null && Object.keys(filters).length === 0)
-    throw new SecretsmithError(
+    throw new KryptosError(
       "delete requires --label or at least one --attr filter (refusing to match all items)",
     );
   const found = await svc.search(filters, a.collection, a.label ?? null);
   if (!found.length)
-    throw new SecretsmithError(`no item matches ${JSON.stringify(filters)}`);
+    throw new KryptosError(`no item matches ${JSON.stringify(filters)}`);
   if (!a.yes) {
     console.log(`would delete ${found.length} item(s):`);
     for (const it of found) console.log(`  [${it.path}] ${it.label}`);
@@ -805,23 +805,23 @@ async function resolveEnvSpecs(
   const exports: Record<string, string> = {};
   for (const spec of a.env ?? []) {
     if (!spec.includes("="))
-      throw new SecretsmithError(
+      throw new KryptosError(
         `env spec must be VAR=k=v[,k2=v2...], got ${JSON.stringify(spec)}`,
       );
     const eq = spec.indexOf("=");
     const varName = spec.slice(0, eq);
     const attrspec = spec.slice(eq + 1);
     if (!shellIdent.test(varName))
-      throw new SecretsmithError(
+      throw new KryptosError(
         `env var name ${JSON.stringify(varName)} is not a valid identifier`,
       );
     const [canonical] = resolveAlias(aliases, varName);
     const filters = parseAttrs(attrspec.split(","));
     const found = await svc.search(filters, a.collection, canonical);
     if (!found.length)
-      throw new SecretsmithError(`no item matches ${JSON.stringify(filters)}`);
+      throw new KryptosError(`no item matches ${JSON.stringify(filters)}`);
     if (found.length > 1)
-      throw new SecretsmithError(
+      throw new KryptosError(
         `${found.length} items match ${JSON.stringify(filters)} — refine attributes`,
       );
     const it = found[0];
@@ -874,7 +874,7 @@ async function cmdEnv(
     if (a.app) {
       // 2026-10-27: exact `service === app` silently dropped
       // KAPPA_SERVER_PASSWORD (that item has NO `service` attribute), so
-      // `secretsmith env --app kappa` emitted only HODOS_API_KEY and the
+      // `kryptos env --app kappa` emitted only HODOS_API_KEY and the
       // kappa server booted UNSECURED ("KAPPA_SERVER_PASSWORD is not set").
       // An app owns a secret when EITHER the service attribute names it OR
       // the label/key belongs to it (case-insensitive prefix match).
@@ -959,7 +959,7 @@ async function cmdExec(
           env[aliasName] = env[it.label];
     }
   } else {
-    throw new SecretsmithError("specify --env VAR=k=v, --only NAME, or --all");
+    throw new KryptosError("specify --env VAR=k=v, --only NAME, or --all");
   }
   if (a.print_env_names) {
     for (const name of Object.keys(env).sort())
@@ -1004,7 +1004,7 @@ export function decryptChromiumBlob(
     blob.subarray(0, 3).toString() !== "v10" &&
     blob.subarray(0, 3).toString() !== "v11"
   )
-    throw new SecretsmithError(
+    throw new KryptosError(
       `unsupported blob prefix ${JSON.stringify(blob.subarray(0, 3).toString())} (expected v10/v11)`,
     );
   const ct = blob.subarray(3);
@@ -1023,7 +1023,7 @@ export function decryptChromiumBlob(
       continue;
     }
   }
-  throw new SecretsmithError(
+  throw new KryptosError(
     `decryption failed with all ${candidates.length} key candidates`,
   );
 }
@@ -1032,7 +1032,7 @@ async function chromiumKeyBytes(svc: SecretService, registry: any) {
   const [schema] = resolveSchema("chromium", registry);
   const found = await svc.search({ "xdg:schema": schema });
   if (!found.length)
-    throw new SecretsmithError(
+    throw new KryptosError(
       `no Chromium Safe Storage entry (schema ${schema})`,
     );
   await svc.ensureUnlockedItems(found);
@@ -1043,8 +1043,8 @@ async function chromiumKeyBytes(svc: SecretService, registry: any) {
 function copyProfileDb(profileDir: string, name: string): [string, string] {
   const src = join(profileDir, name);
   if (!existsSync(src))
-    throw new SecretsmithError(`profile db not found: ${src}`);
-  const tmp = mkdtempSync(join(tmpdir(), "secretsmith-"));
+    throw new KryptosError(`profile db not found: ${src}`);
+  const tmp = mkdtempSync(join(tmpdir(), "kryptos-"));
   const dst = join(tmp, name);
   copyFileSync(src, dst);
   for (const suffix of ["-wal", "-shm"])
@@ -1166,7 +1166,7 @@ function defaultChromiumProfile(): string {
     const p = join(base, "Default");
     if (existsSync(p)) return p;
   }
-  throw new SecretsmithError("no chromium profile found; pass --profile-dir");
+  throw new KryptosError("no chromium profile found; pass --profile-dir");
 }
 
 // ---------- Bitwarden ----------
@@ -1227,7 +1227,7 @@ async function cmdBitwardenGet(
   }
   const items = await svc.search({ name: a.id_or_name });
   if (!items.length) {
-    console.error(`secretsmith: bitwarden/secrets error: ${err}`);
+    console.error(`kryptos: bitwarden/secrets error: ${err}`);
     return 1;
   }
   await svc.ensureUnlockedItems([items[0]]);
@@ -1274,7 +1274,7 @@ async function cmdCookieVaultSync(
     else console.log(out);
     return res.status ?? 1;
   } catch (e) {
-    console.error(`secretsmith: cookie-vault error: ${e}`);
+    console.error(`kryptos: cookie-vault error: ${e}`);
     return 1;
   }
 }
@@ -1288,7 +1288,7 @@ async function cmdTauAuthSync(
 ) {
   const dbPath = a.db_path || join(homedir(), ".tau", "agent", "agent.db");
   if (!existsSync(dbPath))
-    throw new SecretsmithError(`tau agent.db not found at ${dbPath}`);
+    throw new KryptosError(`tau agent.db not found at ${dbPath}`);
   const { Database } = await import("bun:sqlite");
   const db = new Database(dbPath, { readonly: true });
   const rows = db
@@ -1298,7 +1298,7 @@ async function cmdTauAuthSync(
     .all();
   db.close();
   if (!rows.length) {
-    console.log("secretsmith: no tau credentials to sync");
+    console.log("kryptos: no tau credentials to sync");
     return 0;
   }
   let collection: string;
@@ -1307,7 +1307,7 @@ async function cmdTauAuthSync(
     const colls = await svc.collections();
     const unlocked = colls.filter((c) => !c.locked);
     if (!unlocked.length)
-      throw new SecretsmithError(
+      throw new KryptosError(
         "no unlocked Secret Service collection available (Default Keyring locked and no session collection). Unlock the keyring or run with --collection <label>.",
       );
     const labeled = unlocked.find((c) => c.label);
@@ -1391,7 +1391,7 @@ export function parse(argv: string[]): Args {
   // and hallucinate measurements off them). `--redact` is REJECTED: if
   // passed, fail loudly instead of silently masking.
   if (cmd === "--redact" || rest.includes("--redact"))
-    throw new SecretsmithError(
+    throw new KryptosError(
       "--redact was removed (2026-11-03): masked placeholders poisoned agent outputs; secrets always print",
     );
   const flags = (key: string) => {
@@ -1445,7 +1445,7 @@ export function parse(argv: string[]): Args {
       a.no_fuzzy = flags("--no-fuzzy");
       repeated("--attr", "attr");
       flagVal("--collection", "collection");
-      // Positional label support (anomaly #61): `secretsmith get LABEL` used
+      // Positional label support (anomaly #61): `kryptos get LABEL` used
       // to silently DROP the positional, so `search({})` matched everything
       // and an arbitrary first keyring item was returned. Bare positionals
       // that are not flags are the label; an explicit --label still wins.
@@ -1459,7 +1459,7 @@ export function parse(argv: string[]): Args {
       break;
     case "set":
       if (!flagVal("--label", "label"))
-        throw new SecretsmithError("set requires --label");
+        throw new KryptosError("set requires --label");
       repeated("--attr", "attr");
       flagVal("--collection", "collection");
       flagVal("--secret-file", "secret_file");
@@ -1471,7 +1471,7 @@ export function parse(argv: string[]): Args {
       flagVal("--collection", "collection");
       a.yes = flags("--yes");
       // Positional label support (anomaly #61 redux, 2026-11-03): the block
-      // below lived only in the `get` case, so `secretsmith delete LABEL`
+      // below lived only in the `get` case, so `kryptos delete LABEL`
       // silently dropped LABEL and matched on filters alone — a bare
       // `delete --attr app=x` (or fuzzy label) could wipe the whole ring.
       // Bare positionals that are not flags are the label; explicit --label
@@ -1498,7 +1498,7 @@ export function parse(argv: string[]): Args {
     case "unlock":
       a.targets = rest.splice(0);
       if (!a.targets.length)
-        throw new SecretsmithError(`${cmd} requires targets`);
+        throw new KryptosError(`${cmd} requires targets`);
       break;
     case "schemas":
       break;
@@ -1519,7 +1519,7 @@ export function parse(argv: string[]): Args {
       a.print_env_names = flags("--print-env-names");
       a.command = rest.splice(0);
       if (!a.command.length)
-        throw new SecretsmithError("exec requires a command");
+        throw new KryptosError("exec requires a command");
       break;
     case "check":
     case "chromium-key":
@@ -1544,7 +1544,7 @@ export function parse(argv: string[]): Args {
       flagVal("--content-type", "content_type");
       break;
     default:
-      throw new SecretsmithError(`unknown command: ${cmd}`);
+      throw new KryptosError(`unknown command: ${cmd}`);
   }
   return a;
 }
@@ -1602,7 +1602,7 @@ async function main(): Promise<number> {
     a = parse(process.argv.slice(2));
   } catch (e) {
     console.error(
-      `secretsmith: ${e instanceof SecretsmithError ? "error: " + e.message : e}`,
+      `kryptos: ${e instanceof KryptosError ? "error: " + e.message : e}`,
     );
     return 2;
   }
@@ -1619,12 +1619,12 @@ async function main(): Promise<number> {
     svc.bus.disconnect();
     return code;
   } catch (e) {
-    if (e instanceof SecretsmithError) {
-      console.error(`secretsmith: error: ${e.message}`);
+    if (e instanceof KryptosError) {
+      console.error(`kryptos: error: ${e.message}`);
       return 1;
     }
     if (e instanceof dbus.DBusError) {
-      console.error(`secretsmith: D-Bus error: ${e.message}`);
+      console.error(`kryptos: D-Bus error: ${e.message}`);
       return 1;
     }
     throw e;
@@ -1637,9 +1637,9 @@ function printUsage() {
 }
 
 const USAGE: Record<string, string> = {
-  _root: `secretsmith — keyring SSOT CLI (Secret Service / D-Bus)
+  _root: `kryptos — keyring SSOT CLI (Secret Service / D-Bus)
 
-usage: secretsmith [--json] [--bus <addr>] <command> [args] [flags]
+usage: kryptos [--json] [--bus <addr>] <command> [args] [flags]
 
 Global flags:
   --json          machine-readable output (per command)
@@ -1653,7 +1653,7 @@ Credential commands:
   get <label> [--attr k=v]... [--collection C] [--no-fuzzy]
       fetch one item; prints the secret value (always — redact removed)
   set --label L [--attr k=v]... [--collection C] (--secret-file F | --value V | stdin)
-      create/replace; stdin via: echo -n s | secretsmith set --label L
+      create/replace; stdin via: echo -n s | kryptos set --label L
   delete <label> [--attr k=v]... [--collection C] [--yes]
   collections / collection-create <name> [--alias A] / collection-delete <name> [--yes]
   lock|unlock <targets...>
@@ -1680,10 +1680,10 @@ tau integrations:
   tau-auth-sync [--db-path P] [--collection C] [--content-type T]
       sync tau-auth:* OAuth entries
 
-Help: secretsmith <command> --help`,
-  search: `secretsmith search — list keyring items
+Help: kryptos <command> --help`,
+  search: `kryptos search — list keyring items
 
-usage: secretsmith [--json] search [query] [--schema S] [--attr k=v]... [--collection C]
+usage: kryptos [--json] search [query] [--schema S] [--attr k=v]... [--collection C]
 
   query            substring label filter
   --schema S       filter by schema attr
@@ -1691,75 +1691,75 @@ usage: secretsmith [--json] search [query] [--schema S] [--attr k=v]... [--colle
   --collection C   restrict to collection
   --json           array of {label, collection, attributes, created, modified,
                    secret_len, secret_preview} — previews print by default`,
-  get: `secretsmith get — fetch one item
+  get: `kryptos get — fetch one item
 
-usage: secretsmith [--json] get <label> [--attr k=v]... [--collection C] [--no-fuzzy]
+usage: kryptos [--json] get <label> [--attr k=v]... [--collection C] [--no-fuzzy]
 
   --no-fuzzy       exact-label match only (default allows fuzzy)
   --json           {label, path, content_type, secret, secret_base64}
 NOTE: ambiguous labels resolve arbitrarily on fuzzy match — prefer --no-fuzzy
 for automation (anomaly #63: wrong-item fallback).`,
-  set: `secretsmith set — create/replace an item
+  set: `kryptos set — create/replace an item
 
-usage: secretsmith set --label L [--attr k=v]... [--collection C] [--replace]
+usage: kryptos set --label L [--attr k=v]... [--collection C] [--replace]
        (--secret-file F | --value V | stdin)
 
-  stdin form:  echo -n "secret" | secretsmith set --label L
+  stdin form:  echo -n "secret" | kryptos set --label L
   --replace    allow overwriting an existing label
 RULES (2026-10-28): never --value for multiline; prefer stdin/--secret-file
 (anomaly #19: --secret-file emit path) — and stamp service attrs for
 --app lookups (anomaly #16/#58).`,
-  env: `secretsmith env — print KEY=VALUE for consumption
+  env: `kryptos env — print KEY=VALUE for consumption
 
-usage: secretsmith env [--env k=v]... [--app A] [--attr k=v]... [--all] [--alias-map F]
+usage: kryptos env [--env k=v]... [--app A] [--attr k=v]... [--all] [--alias-map F]
 
   --app A          include service-unbound keys via label/prefix match
                    (anomaly #16) — needs service attributes stamped (anomaly #58)
   --all            include locked collections (fails per-item otherwise)
   --env k=v        extra passthrough values (file values WIN over ambient,
                    anomaly #51/#59 merge order)`,
-  exec: `secretsmith exec — run a command with injected keyring env
+  exec: `kryptos exec — run a command with injected keyring env
 
-usage: secretsmith exec [--env k=v]... [--only k]... [--all] -- <cmd> [args...]
+usage: kryptos exec [--env k=v]... [--only k]... [--all] -- <cmd> [args...]
 
   --only k...      restrict which keys are injected
 Secrets go to the child's ENVIRON, never argv/stdout — safe for automation.`,
-  "chromium-cookies": `secretsmith chromium-cookies — decrypt browser cookies
+  "chromium-cookies": `kryptos chromium-cookies — decrypt browser cookies
 
-usage: secretsmith [--json] chromium-cookies [--profile-dir D]
+usage: kryptos [--json] chromium-cookies [--profile-dir D]
 
   --profile-dir D  default: ~/.config/chromium/Default
 Output: JSONL {host, name, value} (value null when undecryptable).`,
-  "chromium-logins": `secretsmith chromium-logins — decrypt saved logins
+  "chromium-logins": `kryptos chromium-logins — decrypt saved logins
 
-usage: secretsmith [--json] chromium-logins [--profile-dir D]
+usage: kryptos [--json] chromium-logins [--profile-dir D]
 Output: JSONL {origin, username, password}.`,
-  "chromium-key": `secretsmith chromium-key — cookie-decrypt key candidates
-usage: secretsmith [--json] chromium-key`,
-  check: `secretsmith check — credential health sweep
-usage: secretsmith check`,
-  "cookie-vault": `secretsmith cookie-vault — sync browser cookies to vault
-usage: secretsmith cookie-vault [sync]`,
-  "tau-auth-sync": `secretsmith tau-auth-sync — sync tau-auth:* OAuth entries
-usage: secretsmith tau-auth-sync [--db-path P] [--collection C] [--content-type T]`,
-  collections: `secretsmith collections — list collections
-usage: secretsmith [--json] collections`,
-  "collection-create": `secretsmith collection-create — new collection
-usage: secretsmith collection-create <name> [--alias A]`,
-  "collection-delete": `secretsmith collection-delete — remove collection
-usage: secretsmith collection-delete <name> [--yes]`,
-  lock: `secretsmith lock — lock items/collections
-usage: secretsmith lock <targets...>`,
-  unlock: `secretsmith unlock — unlock items/collections
-usage: secretsmith unlock <targets...>`,
-  schemas: `secretsmith schemas — list known schema types
-usage: secretsmith schemas`,
-  delete: `secretsmith delete — remove an item
-usage: secretsmith delete <label> [--attr k=v]... [--collection C] [--yes]`,
-  "bw-status": `secretsmith bw-status — bitwarden unlock state
-usage: secretsmith bw-status`,
-  "bw-get": `secretsmith bw-get — fetch from bitwarden
-usage: secretsmith bw-get <item_type> <id_or_name>`,
+  "chromium-key": `kryptos chromium-key — cookie-decrypt key candidates
+usage: kryptos [--json] chromium-key`,
+  check: `kryptos check — credential health sweep
+usage: kryptos check`,
+  "cookie-vault": `kryptos cookie-vault — sync browser cookies to vault
+usage: kryptos cookie-vault [sync]`,
+  "tau-auth-sync": `kryptos tau-auth-sync — sync tau-auth:* OAuth entries
+usage: kryptos tau-auth-sync [--db-path P] [--collection C] [--content-type T]`,
+  collections: `kryptos collections — list collections
+usage: kryptos [--json] collections`,
+  "collection-create": `kryptos collection-create — new collection
+usage: kryptos collection-create <name> [--alias A]`,
+  "collection-delete": `kryptos collection-delete — remove collection
+usage: kryptos collection-delete <name> [--yes]`,
+  lock: `kryptos lock — lock items/collections
+usage: kryptos lock <targets...>`,
+  unlock: `kryptos unlock — unlock items/collections
+usage: kryptos unlock <targets...>`,
+  schemas: `kryptos schemas — list known schema types
+usage: kryptos schemas`,
+  delete: `kryptos delete — remove an item
+usage: kryptos delete <label> [--attr k=v]... [--collection C] [--yes]`,
+  "bw-status": `kryptos bw-status — bitwarden unlock state
+usage: kryptos bw-status`,
+  "bw-get": `kryptos bw-get — fetch from bitwarden
+usage: kryptos bw-get <item_type> <id_or_name>`,
 };
 
 if (import.meta.main) {
