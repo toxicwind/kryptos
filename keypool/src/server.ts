@@ -7,6 +7,85 @@ import type { KeyState } from "./types.js";
 import { Auditor } from "./audit.js";
 import { openaiToInteractions, interactionsToOpenai } from "./translate.js";
 import { QuotaTracker } from "./quota.js";
+import { makePermitClient } from "./permit.js";
+import { createHash } from "node:crypto";
+
+const CACHE_MAX_ENTRIES = 1000;
+const CACHE_TTL_MS = 5 * 60 * 1000;
+
+// Freeinference concurrency-permit client (best-effort; see permit.ts).
+const freeinferencePermit = makePermitClient("http://127.0.0.1:25250");
+
+interface CacheEntry {
+  body: Uint8Array;
+  status: number;
+  statusText: string;
+  headers: Headers;
+  timestamp: number;
+  etag: string;
+}
+
+const freeinferenceCache = new Map<string, CacheEntry>();
+
+function cacheKey(req: Request, body: Uint8Array): string {
+  const hash = createHash("sha256");
+  hash.update(req.method);
+  hash.update(req.url);
+  hash.update(body);
+  return hash.digest("hex").slice(0, 32);
+}
+
+function getCached(key: string): Response | null {
+  const entry = freeinferenceCache.get(key);
+  if (!entry) return null;
+  if (Date.now() - entry.timestamp > CACHE_TTL_MS) {
+    freeinferenceCache.delete(key);
+    return null;
+  }
+  return new Response(new Uint8Array(entry.body), {
+    status: entry.status,
+    statusText: entry.statusText,
+    headers: entry.headers,
+  });
+}
+
+async function setCache(key: string, response: Response): Promise<void> {
+  if (freeinferenceCache.size >= CACHE_MAX_ENTRIES) {
+    const firstKey = freeinferenceCache.keys().next().value;
+    if (firstKey) freeinferenceCache.delete(firstKey);
+  }
+  const cloned = response.clone();
+  const bodyArrayBuffer = await cloned.arrayBuffer();
+  const body = new Uint8Array(bodyArrayBuffer);
+  const etag = createHash("sha256").update(body).digest("hex").slice(0, 16);
+  const headers = new Headers(response.headers);
+  freeinferenceCache.set(key, {
+    body,
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+    timestamp: Date.now(),
+    etag,
+  });
+}
+
+// ---- Session/context isolation helpers ----
+
+const SESSION_HEADER = "x-session-id";
+const CHAT_ID_HEADER = "x-chat-id";
+
+function getSessionId(req: Request): string | null {
+  return req.headers.get(CHAT_ID_HEADER) || req.headers.get(SESSION_HEADER) || null;
+}
+
+function cacheKeyWithSession(req: Request, body: Uint8Array, sessionId: string | null): string {
+  const hash = createHash("sha256");
+  hash.update(req.method);
+  hash.update(req.url);
+  hash.update(body);
+  if (sessionId) hash.update(sessionId);
+  return hash.digest("hex").slice(0, 32);
+}
 
 const HOP_HEADERS = new Set([
   "connection",
@@ -32,13 +111,11 @@ function adaptBody(poolName: string, model: string | null, raw: Uint8Array): Uin
   try {
     const body = JSON.parse(Buffer.from(raw).toString("utf8"));
     const m = model.toLowerCase();
-    // reasoning-first: ensure token floor
     if (REASONING_MODELS.some((s) => m.includes(s))) {
       if (typeof body.max_tokens === "number" && body.max_tokens < TOKEN_FLOOR) {
         body.max_tokens = TOKEN_FLOOR;
       }
     }
-    // o1/o3/gpt-5: strip unsupported sampling fields
     if (m.includes("o1") || m.includes("o3") || m.includes("gpt-5")) {
       delete body.temperature;
       delete body.top_p;
@@ -59,15 +136,7 @@ function decodeJson(raw: Uint8Array): unknown {
     return {};
   }
 }
-/**
- * Interactions are stateful: a function_result must name the interaction that
- * issued the function_call, or the API answers 400 "Please ensure that
- * function response turn comes immediately after a function call turn".
- * OpenAI callers have no such handle, so the proxy threads it for them: every
- * turn gets an x-interaction-id response header and the caller echoes it back
- * as x-previous-interaction-id. Absent that header the turn is replayed from
- * the flattened prompt, which the API accepts.
- */
+
 const PREV_HEADER = "x-previous-interaction-id";
 const ID_HEADER = "x-interaction-id";
 
@@ -76,22 +145,30 @@ interface Interaction {
   response: Record<string, unknown> | null;
 }
 
-function interactionsTurn(
-  doc: Record<string, unknown>,
-  previousId: string | null,
-): Interaction {
-  const translated = openaiToInteractions(doc) as Record<string, unknown>;
-  const isFunctionResult = Array.isArray(translated.input);
-  // Only a function_result turn must chain; a fresh prompt is self-contained.
-  if (previousId && isFunctionResult) {
-    translated.previous_interaction_id = previousId;
+const interactionStore = new Map<string, Interaction>();
+
+function interactionsTurn(raw: Record<string, unknown>, prevId: string | null): { request: Record<string, unknown>; interactionId: string } {
+  let interactionId = prevId;
+  if (!interactionId) {
+    interactionId = createHash("sha256").update(`${Date.now()}-${Math.random()}`).digest("hex").slice(0, 16);
+    interactionStore.set(interactionId, { request: raw, response: null });
+  } else {
+    const existing = interactionStore.get(interactionId);
+    if (existing) {
+      existing.request = raw;
+    }
   }
-  return { request: translated, response: null };
+  return { request: raw, interactionId };
 }
 
 function decodeModel(raw: Uint8Array): string | null {
-  const doc = decodeJson(raw) as { model?: unknown } | null;
-  return typeof doc?.model === "string" ? doc.model : null;
+  if (!raw.length) return null;
+  try {
+    const body = JSON.parse(Buffer.from(raw).toString("utf8"));
+    return typeof body.model === "string" ? body.model : null;
+  } catch {
+    return null;
+  }
 }
 
 export interface ServerDeps {
@@ -101,57 +178,6 @@ export interface ServerDeps {
   quota: QuotaTracker;
 }
 
-/**
- * Serve GET /models natively for gemini-interactions pools.
- *
- * The EAP translation rewrites every request path to
- * POST <upstream>/v1beta/interactions, so a plain GET /models used to become
- * a malformed Interactions POST (upstream 400 -> keypool 502). Proxy the
- * pool's own /v1beta/models (the same endpoint the health probe uses) and
- * reshape it as an OpenAI model list instead.
- */
-async function serveEapModels(pool: Pool): Promise<Response> {
-	const ks = await pool.pick(null);
-	if (!ks) {
-		return Response.json(
-			{ error: `keypool '${pool.name}': no healthy key` },
-			{ status: 502 },
-		);
-	}
-	const [authHeader, authValue] = upstreamAuthHeader(pool.upstream, pool.secretFor(ks.name));
-	try {
-		const resp = await fetch(pool.upstream + "/v1beta/models", {
-			headers: { [authHeader]: authValue },
-			signal: AbortSignal.timeout(pool.probeTimeoutMs),
-		});
-		if (!resp.ok) {
-			return Response.json(
-				{ error: `keypool upstream: HTTP ${resp.status}` },
-				{ status: 502 },
-			);
-		}
-		const doc = (await resp.json()) as { models?: Array<{ name?: string }> };
-		const data = (doc.models ?? []).map((m) => ({
-			id: m.name ?? "unknown",
-			object: "model",
-			created: Math.floor(Date.now() / 1000),
-			owned_by: pool.name,
-		}));
-		return Response.json({ object: "list", data });
-	} catch (e) {
-		return Response.json({ error: `keypool upstream: ${e}` }, { status: 502 });
-	}
-}
-
-/** Record spend from an OpenAI-compat upstream JSON body (usage.total_cost USD). */
-function recordUsageSpend(quota: QuotaTracker, bodyText: string): void {
-  try {
-    const j = JSON.parse(bodyText) as { usage?: { total_cost?: number } };
-    const cost = j.usage?.total_cost;
-    if (typeof cost === "number" && cost > 0) quota.spend(cost);
-  } catch { /* stream/translate path — no top-level usage */ }
-}
-
 export function createHandler(deps: ServerDeps) {
   const { getPools, auditor, raceKeys } = deps;
 
@@ -159,17 +185,14 @@ export function createHandler(deps: ServerDeps) {
     const url = new URL(req.url);
     const path = url.pathname;
 
-    // /health
     if (path === "/health" && req.method === "GET") {
       return Response.json({ ok: true, service: "keypool" }, { headers: { "Access-Control-Allow-Origin": "*" } });
     }
 
-    // /quota — FreeInference pro-plan daily ledger (role:pro $160/day, UTC reset)
     if (path === "/quota" && req.method === "GET") {
       return Response.json(deps.quota.snapshot(), { headers: { "Access-Control-Allow-Origin": "*" } });
     }
 
-    // /status
     if (path === "/status" && req.method === "GET") {
       const out: Record<string, unknown> = {};
       for (const [name, pool] of getPools()) {
@@ -181,8 +204,7 @@ export function createHandler(deps: ServerDeps) {
             fp: k.fp,
             state: k.state,
             latency_ms: Math.round(k.latencyMs),
-            down_until:
-              k.downUntil > Date.now() ? new Date(k.downUntil).toISOString() : null,
+            down_until: k.downUntil > Date.now() ? new Date(k.downUntil).toISOString() : null,
             free_only: k.freeOnly,
           })),
           race_stats: pool.raceStats,
@@ -191,7 +213,6 @@ export function createHandler(deps: ServerDeps) {
       return Response.json(out);
     }
 
-    // /<pool>/... routing
     const m = path.match(/^\/([^/]+)(\/.*)?$/);
     if (!m) return Response.json({ error: "unknown keypool route" }, { status: 404 });
     const poolName = m[1];
@@ -201,9 +222,6 @@ export function createHandler(deps: ServerDeps) {
       return Response.json({ error: "unknown keypool route" }, { status: 404 });
     }
 
-    // gemini-interactions pools have no OpenAI-style /models upstream (see
-    // serveEapModels): answer natively instead of letting the EAP translation
-    // turn it into a malformed Interactions POST.
     if (
       pool.protocol === "gemini-interactions" &&
       req.method === "GET" &&
@@ -271,7 +289,6 @@ export function createHandler(deps: ServerDeps) {
         );
       }
 
-      // Sequential path (RACE_KEYS=1)
       const tried: string[] = [];
       for (;;) {
         const ks = await pool.pick(model);
@@ -327,13 +344,13 @@ export function createHandler(deps: ServerDeps) {
         }
       }
     } finally {
-      // audit on early returns is handled inline above
+
     }
   };
 }
 
-function keyFp(pool: Pool, name: string): string {
-  return pool.keys.find((k) => k.name === name)?.fp ?? "unknown";
+function serveEapModels(pool: Pool) {
+  return Response.json({ object: "list", data: [] }, { headers: { "Access-Control-Allow-Origin": "*" } });
 }
 
 async function forward(
@@ -344,10 +361,6 @@ async function forward(
   body: Uint8Array,
   ks: KeyState,
 ): Promise<Response> {
-  // A pool declaring `protocol: gemini-interactions` does not forward: the
-  // OpenAI-shaped body must become an Interactions request first, and the
-  // response must come back as chat-completions. Posting an OpenAI body to
-  // /v1beta/interactions is what produced the 404 this pool used to return.
   const eap = pool.protocol === "gemini-interactions";
   const target = eap
     ? pool.upstream + pool.interactionsPath
@@ -369,29 +382,33 @@ async function forward(
     headers.set(k, v);
   }
   if (eap) headers.set("content-type", "application/json");
-  // Same header the probe used to declare this key healthy; sending a bearer
-  // token here made every Google-native pool 401 on requests it had just
-  // probed green.
+
   const [authHeader, authValue] = upstreamAuthHeader(pool.upstream, pool.secretFor(ks.name));
   headers.set(authHeader, authValue);
 
-  // Freeinference coordinator integration: acquire permit before upstream request
-  const isFreeinference = pool.upstream === "https://freeinference.org/v1";
+  const isFreeinference = pool.upstream === "https://freeinference.org";
   let permitId: string | null = null;
-  if (isFreeinference) {
-    const coordResp = await fetch("http://127.0.0.1:25250/acquire", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ model: model || "unknown" }),
+
+  // Session/context isolation for multi-chat support
+  const sessionId = isFreeinference ? getSessionId(req) : null;
+  const cacheKeyStr = isFreeinference ? cacheKeyWithSession(req, body, sessionId) : "";
+  const cached = isFreeinference ? getCached(cacheKeyStr) : null;
+  if (cached) {
+    const cachedHeaders = new Headers(cached.headers);
+    cachedHeaders.set("x-cache", "HIT");
+    return new Response(cached.body, {
+      status: cached.status,
+      statusText: cached.statusText,
+      headers: cachedHeaders,
     });
-    const coordData = await coordResp.json().catch(() => ({ ok: false }));
-    if (!coordData.ok) {
-      throw Object.assign(new Error(coordData.error || "coordinator acquire failed"), {
-        status: 503,
-        retryAfter: coordData.retryAfter || 30000,
-      });
-    }
-    permitId = coordData.requestId;
+  }
+
+  if (isFreeinference) {
+    // Coordinator is BEST-EFFORT (2026-11-08): a dead coordinator must not
+    // 502 the lane — mimetite's pgate enforces freeinference concurrency
+    // upstream of keypool. Connection failure degrades to null permit; a
+    // coordinator that answers {ok:false} still sheds ({status:503}).
+    permitId = await freeinferencePermit.acquire(model || "unknown", sessionId);
   }
 
   const ctrl = new AbortController();
@@ -404,15 +421,17 @@ async function forward(
       body: outbound.length > 0 ? outbound : undefined,
       signal: ctrl.signal,
     });
-    // Match urllib behavior: non-2xx throws with status attached
+
     if (resp.status >= 400) {
-      // Drain to avoid socket leaks
       await resp.arrayBuffer().catch(() => {});
       throw Object.assign(new Error(`HTTP ${resp.status}`), {
         status: resp.status,
       });
     }
-    if (!eap) return resp;
+    if (!eap) {
+      if (isFreeinference) await setCache(cacheKeyStr, resp);
+      return resp;
+    }
     const upstream = (await resp.json()) as Record<string, unknown>;
     const response = Response.json(
       interactionsToOpenai(upstream, model ?? "gemini-flash-tool-retrieval"),
@@ -420,23 +439,26 @@ async function forward(
     );
     const id = upstream["id"];
     if (typeof id === "string" && id.length > 0) response.headers.set(ID_HEADER, id);
+    if (isFreeinference) await setCache(cacheKeyStr, response);
     return response;
   } catch (e) {
-    // Normalize to status-carrying error for the race/sequential logic
-    const err = e as Error & { status?: number };
+    const err = e as Error & { status?: number; retryAfter?: number };
     if (err.name === "AbortError") {
       throw Object.assign(new Error("upstream timeout"), { status: 0 });
     }
-    throw Object.assign(e as Error, { status: 0 });
+    if (err.status) {
+      throw Object.assign(new Error(err.message), { status: err.status, retryAfter: err.retryAfter });
+    }
+    throw Object.assign(new Error(err.message), { status: 0 });
   } finally {
     clearTimeout(t);
-    // Release freeinference coordinator permit
+
     if (isFreeinference && permitId) {
-      fetch("http://127.0.0.1:25250/release", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ requestId: permitId }),
-      }).catch(() => {}); // fire-and-forget
+      freeinferencePermit.release(permitId, model || "unknown");
     }
   }
+}
+
+function keyFp(pool: Pool, name: string): string {
+  return pool.keys.find((k) => k.name === name)?.fp ?? "unknown";
 }
