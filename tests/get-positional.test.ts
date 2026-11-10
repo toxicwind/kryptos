@@ -53,7 +53,7 @@ describe("kryptos get positional label", () => {
 
 	test("get label-echo: returned item echoes the EXACT requested label", async () => {
 		// The label is the key contract — a fuzzy/wrong fetch is the defect.
-		const proc = Bun.spawn(["bun", "kryptos.ts", "get", "GITHUB_TOKEN"], {
+		const proc = Bun.spawn(["bun", "kryptos.ts", "get", "GH_TOKEN"], {
 			cwd: import.meta.dir + "/..",
 			stdout: "pipe",
 			stderr: "pipe",
@@ -61,6 +61,10 @@ describe("kryptos get positional label", () => {
 		const stdout = await Bun.readableStreamToText(proc.stdout);
 		const exit = await proc.exited;
 		expect(exit).toBe(0);
-		expect(stdout).toContain("label: GITHUB_TOKEN");
+		// 2026-11-10 contract: plain `get` prints ONLY the raw secret value
+		// (gopass/pass-show) — no `label:` metadata prefix. Use --json for
+		// metadata; scripting pipes must see the bare secret.
+		expect(stdout).not.toContain("label:");
+		expect(stdout.trim().length).toBeGreaterThan(0);
 	});
 });

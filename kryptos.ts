@@ -568,16 +568,12 @@ async function cmdGet(
       ),
     );
   } else {
-    console.log(
-      `label: ${it.label}\npath: ${it.path}\ncontent_type: ${contentType}`,
-    );
-    for (const k of Object.keys(it.attributes).sort())
-      console.log(`attr ${k} = ${it.attributes[k]}`);
-    console.log(
-      isText(secret)
-        ? `secret: ${secret.toString("utf8")}`
-        : `secret (base64): ${secret.toString("base64")}`,
-    );
+    // Plain form prints ONLY the raw secret value (gopass/pass-show
+    // contract) — scripting `kryptos get X | cmd` must not see metadata.
+    // Metadata lives in `search`/`--json`. Fixed 2026-11-10: the old
+    // label/path/attr dump broke every pipe consumer (the 238-char
+    // "secret" that poisoned router.key materialization).
+    console.log(isText(secret) ? secret.toString("utf8") : secret.toString("base64"));
   }
   return 0;
 }
@@ -1713,6 +1709,8 @@ usage: kryptos [--json] get <label> [--attr k=v]... [--collection C] [--no-fuzzy
 
   --no-fuzzy       exact-label match only (default allows fuzzy)
   --json           {label, path, content_type, secret, secret_base64}
+Plain form prints ONLY the raw secret value (gopass/pass-show contract) —
+pipe-safe for scripting. Use --json for metadata.
 NOTE: ambiguous labels resolve arbitrarily on fuzzy match — prefer --no-fuzzy
 for automation (anomaly #63: wrong-item fallback).`,
   set: `kryptos set — create/replace an item
