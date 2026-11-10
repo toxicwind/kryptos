@@ -261,7 +261,7 @@ export class SecretService {
     return out;
   }
 
-  private async isLocked(path: string, iface: string) {
+  async isLocked(path: string, iface: string) {
     return Boolean(await this.getProp(path, iface, "Locked"));
   }
 
@@ -583,14 +583,22 @@ async function cmdGet(
 }
 
 function readSecretInput(a: any): Buffer {
-  const raw = a.secret_file ? readFileSync(a.secret_file) : Buffer.from(readFileSync(0));
-  // Anomaly #84 seal: `echo s | kryptos set` and heredocs append a
-  // trailing \n that then poisons HTTP-header consumers (gh: "invalid header
-  // field value for Authorization") forever. Trim trailing CR/LF once, at the
-  // only write boundary. Interior bytes are never touched.
+  // --value V is the direct form (single-line secrets); --secret-file wins
+  // over it (multiline / binary); stdin is the fallback. Trailing CR/LF is
+  // trimmed once at the only write boundary (anomaly #84 seal).
+  let raw: Buffer;
+  if (a.secret_file) raw = readFileSync(a.secret_file);
+  else if (a.value != null) raw = Buffer.from(String(a.value), "utf8");
+  else raw = Buffer.from(readFileSync(0));
   let end = raw.length;
   while (end > 0 && (raw[end - 1] === 0x0a || raw[end - 1] === 0x0d)) end--;
-  return end === raw.length ? raw : raw.subarray(0, end);
+  const out = end === raw.length ? raw : raw.subarray(0, end);
+  // An empty secret is never a legitimate store; the Python port already
+  // refuses it, and the silent-empty bug (--value unparsed → stdin empty)
+  // made this check load-bearing for the TS port too.
+  if (out.length === 0)
+    throw new KryptosError("empty secret — refusing to store nothing");
+  return out;
 }
 
 async function cmdSet(
@@ -741,7 +749,9 @@ async function cmdSchemas(
   if (asJson) console.log(JSON.stringify(registry, null, 2));
   else
     for (const [k, v] of Object.entries(registry))
-      console.log(`${k}: ${v.description ?? ""}`);
+      console.log(
+        `${k}: ${(v as SchemaEntry | undefined)?.description ?? ""}`,
+      );
   return 0;
 }
 
@@ -922,7 +932,7 @@ async function cmdExec(
   asJson: boolean,
 ) {
   const aliases = loadAliasMap(a.alias_map || undefined);
-  const env: Record<string, string> = { ...process.env };
+  const env: Record<string, string> = { ...process.env } as Record<string, string>;
   if (a.env?.length) {
     Object.assign(
       env,
@@ -1295,7 +1305,7 @@ async function cmdTauAuthSync(
     .prepare(
       "SELECT id, provider, credential_type, data, identity_key FROM auth_credentials ORDER BY id",
     )
-    .all();
+    .all() as Array<Record<string, unknown>>;
   db.close();
   if (!rows.length) {
     console.log("kryptos: no tau credentials to sync");
@@ -1319,7 +1329,7 @@ async function cmdTauAuthSync(
     const data =
       typeof row.data === "string"
         ? row.data
-        : Buffer.from(row.data).toString("utf8");
+        : Buffer.from(row.data as Buffer).toString("utf8");
     const label = `tau-auth:${row.provider ?? ""}`;
     const attrs = {
       tau_credential: "1",
@@ -1463,6 +1473,12 @@ export function parse(argv: string[]): Args {
       repeated("--attr", "attr");
       flagVal("--collection", "collection");
       flagVal("--secret-file", "secret_file");
+      // --value V is the direct single-line form. It was advertised in the
+      // usage but never parsed (2026-11-10): the flag fell through to `rest`,
+      // the value went to stdin (empty in agent shells) and an EMPTY secret
+      // was stored with exit 0 — the origin of the "never use --value" cargo
+      // cult. Now parsed; still prefer --secret-file for multiline/binary.
+      flagVal("--value", "value");
       a.replace = flags("--replace");
       break;
     case "delete":
@@ -1704,11 +1720,12 @@ for automation (anomaly #63: wrong-item fallback).`,
 usage: kryptos set --label L [--attr k=v]... [--collection C] [--replace]
        (--secret-file F | --value V | stdin)
 
-  stdin form:  echo -n "secret" | kryptos set --label L
-  --replace    allow overwriting an existing label
-RULES (2026-10-28): never --value for multiline; prefer stdin/--secret-file
-(anomaly #19: --secret-file emit path) — and stamp service attrs for
---app lookups (anomaly #16/#58).`,
+  --value V       direct single-line secret (the normal form for agent use)
+  --secret-file F multiline / binary secrets (reads the file verbatim)
+  stdin form:     echo -n "secret" | kryptos set --label L
+  --replace       allow overwriting an existing label
+NOTE: --value is fully supported. Use --secret-file only when the secret
+contains newlines (a shell argument cannot carry them cleanly).`,
   env: `kryptos env — print KEY=VALUE for consumption
 
 usage: kryptos env [--env k=v]... [--app A] [--attr k=v]... [--all] [--alias-map F]

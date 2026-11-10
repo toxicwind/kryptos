@@ -801,6 +801,12 @@ def read_secret_input(a):
     if a.secret_file:
         with open(a.secret_file, "rb") as f:
             data = f.read()
+    elif getattr(a, "value", None) is not None:
+        # --value V is the direct single-line form (agent-preferred). It was
+        # advertised but never wired (2026-11-10): argparse dropped the flag,
+        # stdin was empty in agent shells, and the store silently wrote an
+        # empty secret — the origin of the "never use --value" cargo cult.
+        data = str(a.value).encode("utf-8")
     else:
         if sys.stdin.isatty():
             sys.stderr.write("secret (stdin, end with Ctrl-D): ")
@@ -1620,6 +1626,11 @@ def build_parser():
         "--collection", help="collection label or path (default: default alias)"
     )
     st.add_argument("--secret-file", help="read secret from file instead of stdin")
+    st.add_argument(
+        "--value",
+        help="direct single-line secret value (preferred for agent use; "
+        "--secret-file for multiline/binary)",
+    )
     st.add_argument("--replace", action="store_true")
     st.set_defaults(func=cmd_set)
 
