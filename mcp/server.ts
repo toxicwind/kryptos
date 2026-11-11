@@ -80,7 +80,7 @@ const TOOLS = [
 	{
 		name: "kryptos_set",
 		description:
-			"Create or replace ONE keyring item (label + value). The sanctioned write surface — spawns the kryptos CLI as the daemon lane, never the agent shell. Add attrs like app=<service> for kryptos_env filtering.",
+			"Create or replace ONE keyring item (label + value). The sanctioned write surface — spawns the kryptos CLI as the daemon lane, never the agent shell. Add attrs like app=<service> for kryptos_env filtering. WARNING: --replace matches by ATTRIBUTES — two sets with identical attrs REPLACE each other; give each item a unique attr (e.g. kind=...) to avoid collisions.",
 		inputSchema: {
 			type: "object",
 			properties: {
