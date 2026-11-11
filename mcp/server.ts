@@ -105,6 +105,19 @@ const TOOLS = [
 			required: ["label"],
 		},
 	},
+	{
+		name: "kryptos_bw_get",
+		description:
+			"Fetch ONE item from the linked Bitwarden vault (kryptos bw-get contract). item_type e.g. password; id_or_name e.g. 'reliablesite.net dedi'.",
+		inputSchema: {
+			type: "object",
+			properties: {
+				item_type: { type: "string", description: "Bitwarden item type, e.g. password" },
+				id_or_name: { type: "string", description: "Item id or name in the vault" },
+			},
+			required: ["item_type", "id_or_name"],
+		},
+	},
 ] as const;
 
 async function callTool(name: string, args: any): Promise<unknown> {
@@ -150,6 +163,9 @@ async function callTool(name: string, args: any): Promise<unknown> {
 			for (const pair of String(args.attr ?? "").split(",").map((s) => s.trim()).filter(Boolean))
 				a.push("--attr", pair);
 			return await kryptosJson(a);
+		}
+		case "kryptos_bw_get": {
+			return await kryptosJson(["bw-get", String(args.item_type), String(args.id_or_name)]);
 		}
 		default:
 			throw new Error(`unknown tool ${name}`);
