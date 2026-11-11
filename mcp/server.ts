@@ -77,6 +77,34 @@ const TOOLS = [
 			},
 		},
 	},
+	{
+		name: "kryptos_set",
+		description:
+			"Create or replace ONE keyring item (label + value). The sanctioned write surface — spawns the kryptos CLI as the daemon lane, never the agent shell. Add attrs like app=<service> for kryptos_env filtering.",
+		inputSchema: {
+			type: "object",
+			properties: {
+				label: { type: "string", description: "Keyring label, e.g. CLOUDFLARE_API_TOKEN" },
+				value: { type: "string", description: "Secret value (single-line; use secret_file for multiline)" },
+				attr: { type: "string", description: "Optional k=v attribute, repeat via comma, e.g. app=dedicated,service=cloudflare" },
+				secret_file: { type: "string", description: "Optional path to a file for multiline/binary secrets (overrides value)" },
+			},
+			required: ["label"],
+		},
+	},
+	{
+		name: "kryptos_delete",
+		description:
+			"Delete ONE keyring item by label (+ optional attr filter). For cleanup of stale/rotated entries. Returns the deleted item path.",
+		inputSchema: {
+			type: "object",
+			properties: {
+				label: { type: "string", description: "Keyring label, e.g. CLOUDFLARE_API_TOKEN" },
+				attr: { type: "string", description: "Optional k=v attribute, repeat via comma — narrows which item is deleted when labels collide" },
+			},
+			required: ["label"],
+		},
+	},
 ] as const;
 
 async function callTool(name: string, args: any): Promise<unknown> {
@@ -105,6 +133,23 @@ async function callTool(name: string, args: any): Promise<unknown> {
 				Object.entries(exports).filter(([k]) => k.startsWith(String(args.app).toUpperCase().replace(/-/g, "_"))),
 			);
 			return filtered;
+		}
+		case "kryptos_set": {
+			const a = ["set", "--label", String(args.label), "--replace", "--json"];
+			if (args.secret_file) a.push("--secret-file", String(args.secret_file));
+			else {
+				if (args.value === undefined) throw new Error("kryptos_set requires value or secret_file");
+				a.push("--value", String(args.value));
+			}
+			for (const pair of String(args.attr ?? "").split(",").map((s) => s.trim()).filter(Boolean))
+				a.push("--attr", pair);
+			return await kryptosJson(a);
+		}
+		case "kryptos_delete": {
+			const a = ["delete", String(args.label), "--yes", "--json"];
+			for (const pair of String(args.attr ?? "").split(",").map((s) => s.trim()).filter(Boolean))
+				a.push("--attr", pair);
+			return await kryptosJson(a);
 		}
 		default:
 			throw new Error(`unknown tool ${name}`);
