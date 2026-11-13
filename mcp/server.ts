@@ -69,12 +69,13 @@ const TOOLS = [
 	{
 		name: "kryptos_env",
 		description:
-			"Get the env exports map (KEY=value) for the whole keyring or one app (service attribute). The sanctioned bulk read for wiring a service.",
+			"Get the env exports map (KEY=value) for ONE service. REQUIRES app=<service> (attribute prefix filter, e.g. app=hermes, app=tau). Scoped-only since 2026-11-13: unscoped dumps leaked the whole keyring (~300 secrets) into model context (CVE-2026-40159 class, measured in kout.json). Use kryptos_get for one label if the service is unknown.",
 		inputSchema: {
 			type: "object",
 			properties: {
-				app: { type: "string", description: "Optional app/service attribute filter, e.g. mimetite" },
+				app: { type: "string", description: "REQUIRED. Service attribute prefix filter, e.g. hermes, tau, mimetite" },
 			},
+			required: ["app"],
 		},
 	},
 	{
@@ -139,9 +140,18 @@ async function callTool(name: string, args: any): Promise<unknown> {
 			return safe;
 		}
 		case "kryptos_env": {
+			// SECURITY (2026-11-13, CVE-2026-40159 class, measured in kout.json):
+			// an unscoped dump returned the WHOLE keyring (~300 secrets incl. full
+			// PEMs, NVIDIA_API_KEY, GH_TOKEN) into model context. The tool exists
+			// for service-scoped wiring — require the app filter and FAIL LOUDLY
+			// when it's missing, instead of silently leaking the vault.
+			if (!args.app) {
+				throw new Error(
+					"kryptos_env requires app=<SERVICE> (scoped export). Unscoped dumps leak the whole keyring into model context — CVE-2026-40159 class. Pass app= (e.g. app=hermes, app=tau) or use kryptos_get for one label.",
+				);
+			}
 			const out = await kryptosJson(["--json", "env"]);
 			const exports = out.exports ?? {};
-			if (!args.app) return exports;
 			const filtered = Object.fromEntries(
 				Object.entries(exports).filter(([k]) => k.startsWith(String(args.app).toUpperCase().replace(/-/g, "_"))),
 			);
